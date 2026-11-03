@@ -11,6 +11,8 @@
 //   More link, so it wraps at 280px instead of nowrap.
 // - It takes the pointer, so the link can be clicked; Mova's is
 //   pointer-events-none.
+// - Its text can change while it is open, when the model's answer replaces
+//   the dictionary's, so it measures itself again then.
 // Its padding, border, text size, shadow, arrow and spring are Mova's.
 
 import { useLayoutEffect, useRef, useState } from 'react';
@@ -19,6 +21,7 @@ import { ArrowUpRight } from 'lucide-react';
 
 const GUTTER = 8;
 const LIFT = 6; // Mova's y travel; the bubble rests this far off the word.
+const SOURCE = { page: 'on this page', context: 'in context', guess: 'best guess' };
 
 export function QuestionTooltip({ hit, theme = 'light', onEnter, onLeave, onMore }) {
   return (
@@ -39,7 +42,7 @@ function Bubble({ hit, theme, onEnter, onLeave, onMore }) {
     const below = rect.top - height - LIFT * 2 < GUTTER;
     const left = Math.max(GUTTER, Math.min(center - width / 2, innerWidth - width - GUTTER));
     setPlace({ below, left, top: below ? rect.bottom + 2 : rect.top - height - 2, arrow: center - left });
-  }, [rect.top, rect.bottom, center]);
+  }, [rect.top, rect.bottom, center, hit.meanings.join('|')]);
 
   const dir = place && place.below ? -1 : 1;
   const skin = theme === 'dark' ? 'ab-tip-dark' : 'ab-tip-light';
@@ -68,7 +71,7 @@ function Bubble({ hit, theme, onEnter, onLeave, onMore }) {
         <span className="flex items-center gap-1.5 min-w-0">
           <span className="w-1.5 h-1.5 shrink-0 ab-mark" />
           <span className="font-semibold tracking-[1.1px]">{hit.term}</span>
-          {hit.source === 'page' && <span className="ab-soft truncate">on this page</span>}
+          {SOURCE[hit.source] && <span className="ab-soft truncate">{SOURCE[hit.source]}</span>}
         </span>
         <a
           href={hit.url}

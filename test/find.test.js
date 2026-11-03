@@ -49,6 +49,23 @@ eq('shortest run that spells it', defs('We built the Payment Gateway (PG).'), { 
 eq('words that do not spell it', defs('See the docs (API) and more.'), {});
 eq('a note in parens is not a definition', defs('Use the API (see below).'), {});
 
+// ── Meaning in context ──
+const CI = AB.resolve('CI', {});
+eq('the model picks a known meaning', AB.inContext(CI, 'Confidence Interval').meanings, ['Confidence Interval', 'Continuous Integration']);
+eq('a pick is marked in context', AB.inContext(CI, 'Confidence Interval').source, 'context');
+eq('a pick ignores case and a trailing (CI)', AB.inContext(CI, 'confidence interval (CI)').meanings[0], 'Confidence Interval');
+eq('a new meaning that spells it goes first', AB.inContext(CI, 'Configuration Item').meanings, ['Configuration Item', 'Continuous Integration', 'Confidence Interval']);
+eq('a new meaning is a guess', AB.inContext(CI, 'Configuration Item').source, 'guess');
+eq('an answer that does not spell it is dropped', AB.inContext(CI, 'Build Server'), CI);
+eq('no answer keeps the dictionary', AB.inContext(CI, ''), CI);
+const unknown = { term: 'CDP', meanings: [], source: 'unknown' };
+eq('an unknown acronym gets the model meaning', AB.inContext(unknown, 'Customer Data Platform').meanings, ['Customer Data Platform']);
+eq('an unknown acronym with no answer shows nothing', AB.inContext(unknown, ''), null);
+eq('all caps is askable', AB.askable('CDP'), true);
+eq('a plural is askable', AB.askable('CDPs'), true);
+eq('a name is not askable', AB.askable('GitHub'), false);
+eq('shouting is not askable', AB.askable('THE', 'THE QUICK BROWN FOX JUMPS'), false);
+
 // ── Search ──
 eq('search url', AB.searchUrl({ term: 'API', meanings: ['Application Programming Interface'] }), 'https://www.google.com/search?q=API%20Application%20Programming%20Interface');
 

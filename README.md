@@ -35,6 +35,7 @@ Click the toolbar icon.
 | This site | On | Off for the current site only. |
 | Underline | Every | Every use, the first use of each acronym, or none. Hover works either way. |
 | Open on | Hover | `⌥ + Hover` opens a bubble only while you hold Option (Alt). |
+| Meaning from context | On | Chrome's on-device model picks the meaning that fits the text. Turning it on starts the model download if Chrome does not have it yet. |
 
 ## Where meanings come from
 
@@ -47,6 +48,17 @@ In this order:
    software, cloud, security, networking, data and AI, and the business terms
    that show up in tech docs. Where an acronym has more than one common
    meaning, the bubble lists the others under *Also*.
+
+3. **The text around it**, read by Chrome's on-device model (Gemini Nano,
+   through the [Prompt API](https://developer.chrome.com/docs/ai/prompt-api)).
+   For an acronym with more than one meaning, the bubble opens with the
+   dictionary's first meaning and switches to the one that fits, marked
+   *in context*: `CI` is Continuous Integration in a build log and Confidence
+   Interval in a psychology paper. For an all-caps acronym the dictionary does
+   not have, the bubble opens once the model answers, marked *best guess*. A
+   new meaning is used only if its words spell the acronym. The model runs on
+   the device, so this sends nothing anywhere either. Without the model, the
+   dictionary order stands.
 
 Plurals fall back to the singular (`APIs` is `API`). An acronym that is also
 an English word (`IT`, `US`, `OR`) is skipped inside all-caps text, where it
@@ -107,8 +119,8 @@ npm run zip        # a store-ready zip
 
 - **Images and canvas** are not read. Text only.
 - **Web components with closed shadow roots** hide their text from the hover.
-- **One meaning first.** For an ambiguous acronym the bubble shows the tech
-  meaning first and the others under *Also*; it does not guess from context
-  unless the page defines the term.
-- **Unknown acronyms** get no bubble and no underline, to keep pages quiet.
-  Select the word and search, as before.
+- **Context needs the model.** Without Chrome's on-device model (it needs
+  a capable device and about 22 GB of free disk), an ambiguous acronym
+  shows the tech meaning first and the others under *Also*.
+- **Unknown acronyms** get no underline, to keep pages quiet. With the model
+  they get a bubble on hover; without it, none.

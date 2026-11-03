@@ -5,7 +5,18 @@ import { createRoot } from 'react-dom/client';
 import { MotionConfig } from 'framer-motion';
 import { SegmentedTabs } from '../mova/ui/segmented-tabs.jsx';
 
-const DEFAULTS = { enabled: true, disabledHosts: [], underline: 'every', trigger: 'hover' };
+const DEFAULTS = { enabled: true, disabledHosts: [], underline: 'every', trigger: 'hover', context: true };
+const LM = { expectedInputs: [{ type: 'text', languages: ['en'] }], expectedOutputs: [{ type: 'text', languages: ['en'] }] };
+const MODEL = {
+  available: 'On-device model ready',
+  downloadable: 'Turn on to download the model',
+  downloading: 'Downloading the model',
+  unavailable: 'No on-device model here',
+};
+
+// Chrome's on-device model: 'available', 'downloadable', 'downloading' or
+// 'unavailable'.
+const modelStatus = () => (typeof LanguageModel === 'undefined' ? Promise.resolve('unavailable') : LanguageModel.availability(LM).catch(() => 'unavailable'));
 const ON_OFF = [
   { value: true, label: 'On' },
   { value: false, label: 'Off' },
@@ -26,8 +37,10 @@ function Row({ title, note, children }) {
 function Popup() {
   const [settings, setSettings] = useState(null);
   const [site, setSite] = useState(null);
+  const [model, setModel] = useState(null);
 
   useEffect(() => {
+    modelStatus().then(setModel);
     chrome.storage.sync.get('settings').then(({ settings: s }) => setSettings({ ...DEFAULTS, ...(s || {}) }));
     chrome.tabs.query({ active: true, currentWindow: true }).then(([tab]) => {
       try {
@@ -49,6 +62,14 @@ function Popup() {
     const hosts = new Set(settings.disabledHosts);
     value ? hosts.delete(site) : hosts.add(site);
     save({ disabledHosts: [...hosts] });
+  };
+  // Turning it on is the user gesture Chrome needs to start the download.
+  const setContext = (value) => {
+    save({ context: value });
+    if (value && model === 'downloadable') {
+      setModel('downloading');
+      LanguageModel.create(LM).then((s) => (s.destroy(), setModel('available')), () => modelStatus().then(setModel));
+    }
   };
 
   return (
@@ -87,6 +108,9 @@ function Popup() {
           onChange={(v) => save({ trigger: v })}
         />
       </div>
+      <Row title="Meaning from context" note={model && MODEL[model]}>
+        <SegmentedTabs id="context" label="Meaning from context" options={ON_OFF} value={settings.context} onChange={setContext} />
+      </Row>
       <div className="h-px ab-rule" />
       <div className="text-[11px] ab-soft">⌥⇧A turns it on or off. Hover an underlined word to see it.</div>
     </div>

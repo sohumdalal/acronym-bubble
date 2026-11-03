@@ -7,11 +7,13 @@
 (() => {
   const AB = self.AB;
   const NAME = 'acronym-bubble';
-  const DEFAULTS = { enabled: true, disabledHosts: [], underline: 'every', trigger: 'hover' };
+  const DEFAULTS = { enabled: true, disabledHosts: [], underline: 'every', trigger: 'hover', context: true };
   const DELAY = 300; // pointer rest before a bubble opens
   const SWAP = 120; // ...or before it moves to another acronym once open
   const GRACE = 200; // time to cross from the word into the bubble
   const MAX_MARKS = 5000;
+  const BLOCK = 'p,li,td,th,dd,dt,blockquote,figcaption,caption,h1,h2,h3,h4,h5,h6,section,article,main';
+  const CONTEXT = 600; // characters of text around the acronym that the model reads
   const SKIP = 'script,style,noscript,template,textarea,input,select,code,pre,kbd,samp,var,svg,math,[contenteditable=""],[contenteditable="true"],[data-acronym-bubble]';
 
   const site = location.hostname.replace(/^www\./, '');
@@ -122,7 +124,7 @@
       range.setEnd(node, tok.end);
       const rect = [...range.getClientRects()].find((b) => x >= b.left - 1 && x <= b.right + 1 && y >= b.top - 1 && y <= b.bottom + 1);
       if (!rect) return null;
-      const hit = AB.resolve(tok.term, page, text);
+      const hit = AB.resolve(tok.term, page, text) || (settings.context && AB.askable(tok.term, text) && { term: tok.term, meanings: [], source: 'unknown' });
       return hit && { ...hit, node, start: tok.start, rect };
     }
     return null;
@@ -215,6 +217,21 @@
   function show(hit) {
     clearTimeout(hideTimer);
     current = hit;
+    if (hit.meanings.length) render(hit);
+    const ambiguous = hit.source === 'dictionary' && hit.meanings.length > 1;
+    if (!settings.context || !(ambiguous || hit.source === 'unknown')) return;
+    // The dictionary's answer shows at once; the model's replaces it when it
+    // comes. An unknown acronym shows only once the model has an answer.
+    ask(hit).then((answer) => {
+      if (current !== hit) return;
+      const next = AB.inContext(hit, answer);
+      if (!next || next === hit) return;
+      current = next;
+      render(next);
+    });
+  }
+
+  function render(hit) {
     const theme = themeAt(hit.node.parentElement);
     const view = {
       key: `${hit.term}:${hit.start}:${Math.round(hit.rect.top)}:${Math.round(hit.rect.left)}`,
@@ -225,6 +242,33 @@
       rect: { top: hit.rect.top, bottom: hit.rect.bottom, left: hit.rect.left, width: hit.rect.width },
     };
     loadBubble().then((b) => current === hit && b.show(view, theme));
+  }
+
+  // ── Context ───────────────────────────────────────────────────────────
+
+  // About CONTEXT characters of the block the acronym sits in, centred on it.
+  function contextOf(hit) {
+    const block = hit.node.parentElement.closest(BLOCK) || hit.node.parentElement;
+    const before = new Range();
+    before.setStart(block, 0);
+    before.setEnd(hit.node, hit.start);
+    const at = before.toString().length;
+    const text = block.textContent;
+    const from = Math.max(0, Math.min(at - CONTEXT / 2, text.length - CONTEXT));
+    return text.slice(from, from + CONTEXT).replace(/\s+/g, ' ').trim();
+  }
+
+  // The model's answer, from the background worker, once per acronym and
+  // context. Null when the model is missing, busy or has no answer.
+  const answers = new Map();
+  function ask(hit) {
+    const context = contextOf(hit);
+    const key = `${hit.term}\n${context}`;
+    if (!answers.has(key)) {
+      const msg = { type: 'sense', term: hit.term, known: hit.meanings, context, title: document.title };
+      answers.set(key, chrome.runtime.sendMessage(msg).catch(() => null));
+    }
+    return answers.get(key);
   }
 
   function hide() {

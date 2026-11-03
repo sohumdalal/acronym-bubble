@@ -111,10 +111,31 @@
     return null;
   }
 
+  // An all-caps token the dictionary does not know, such as CDP or B2B: worth
+  // asking the model about. Mixed case (GitHub, iPhone) is a name, not an
+  // acronym, and in shouting text every word is in capitals.
+  function askable(term, context = '') {
+    return /^[A-Z][A-Z0-9&]{1,5}s?$/.test(term) && !shouty(context);
+  }
+
+  // The hit with the model's answer first. A known meaning it names moves to
+  // the front ('context'). A new meaning goes first only if its words spell
+  // the acronym, which keeps out most made-up answers ('guess'). Otherwise
+  // the hit is unchanged, or null when there was nothing to show.
+  function inContext(hit, answer) {
+    const a = String(answer || '').replace(/\s*\([^)]*\)\s*$/, '').trim();
+    const norm = (s) => s.toLowerCase().replace(/[^a-z0-9]/g, '');
+    const meanings = hit.meanings || [];
+    const i = a ? meanings.findIndex((m) => norm(m) === norm(a)) : -1;
+    if (i >= 0) return { ...hit, meanings: [meanings[i], ...meanings.filter((_, j) => j !== i)], source: 'context' };
+    if (a && spells(split(a), letters(hit.term))) return { ...hit, meanings: [a, ...meanings], source: 'guess' };
+    return meanings.length ? hit : null;
+  }
+
   function searchUrl(hit) {
     const q = hit.meanings.length ? `${hit.term} ${hit.meanings[0]}` : `${hit.term} meaning`;
     return `https://www.google.com/search?q=${encodeURIComponent(q)}`;
   }
 
-  Object.assign(AB, { TOKEN, definitions, tokenAt, resolve, searchUrl, shouty });
+  Object.assign(AB, { TOKEN, definitions, tokenAt, resolve, askable, inContext, searchUrl, shouty });
 })((self.AB = self.AB || {}));
