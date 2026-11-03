@@ -36,6 +36,7 @@ Click the toolbar icon.
 | Underline | Every | Every use, the first use of each acronym, or none. Hover works either way. |
 | Open on | Hover | `⌥ + Hover` opens a bubble only while you hold Option (Alt). |
 | Meaning from context | On | Chrome's on-device model picks the meaning that fits the text. Turning it on starts the model download if Chrome does not have it yet. |
+| Open PDFs here | On | PDFs open in Acronym Bubble's own viewer, so they get bubbles too. Off leaves them to Chrome. |
 
 ## Where meanings come from
 
@@ -65,7 +66,7 @@ an English word (`IT`, `US`, `OR`) is skipped inside all-caps text, where it
 is just a word.
 
 Nothing leaves the browser. There are no network requests except the search
-you click.
+you click, and, for a PDF, the viewer loading that same PDF again.
 
 ## How it works
 
@@ -83,6 +84,15 @@ See the code comments in `src/content.js` for the detail. In short:
 - **Skipped text:** `code`, `pre`, form fields, editable regions, SVG. A
   plain-text file (.txt, a raw .md, JSON) is one `pre` in the page Chrome
   builds for it, so there the `pre` is read.
+- **PDFs:** Chrome's PDF viewer runs no content scripts, so the background
+  worker watches for a tab whose response is a PDF (by its content type,
+  because many PDF URLs do not end in `.pdf`) and moves it to
+  `src/pdf/viewer.html`. There [PDF.js](https://mozilla.github.io/pdf.js/)
+  (`pdfjs-dist` 4.10.38, Apache-2.0) draws each page and lays its text over
+  it as real text, and the extension's own scripts read that text as on any
+  page. Downloads, POST results and PDFs inside frames stay with Chrome.
+  **Open in Chrome's viewer** in the viewer's bar opens that one load in
+  Chrome's viewer instead.
 - **Frames:** it runs in every frame, same-origin, cross-origin and
   `srcdoc`, and a bubble closes when the pointer leaves its frame.
 - **Late text:** a MutationObserver scans what a page adds after load.
@@ -165,14 +175,16 @@ working fails until its expectation changes.
 | Local file (`file://`) | Yes | Unpacked. A store install needs **Allow access to file URLs** on the extension's card. |
 | XML | No | Chrome's XML tree viewer has no page body. |
 | SVG | No | Drawn text, not page text. |
-| PDF | No | Chrome's PDF viewer runs no content scripts. |
+| PDF | Yes | In Acronym Bubble's own viewer (PDF.js). |
 
 ## Known limits
 
 - **Images and canvas** are not read. Text only.
 - **Text inside shadow roots**, open or closed, is not read.
-- **PDFs** get no bubble: Chrome's PDF viewer runs no content scripts.
-  Supporting them means opening PDFs in a viewer of our own.
+- **PDFs** open in Acronym Bubble's viewer, not Chrome's: no form filling,
+  annotations or printing from the bar. Use **Open in Chrome's viewer** for
+  those. A PDF behind a POST, or one inside a frame, stays in Chrome's
+  viewer with no bubbles. A scanned PDF has no text to read.
 - **XML and SVG files** get no bubble.
 - **Context needs the model.** Without Chrome's on-device model (it needs
   a capable device and about 22 GB of free disk), an ambiguous acronym

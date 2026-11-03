@@ -7,7 +7,7 @@ import { createRoot } from 'react-dom/client';
 import { MotionConfig } from 'framer-motion';
 import { SegmentedTabs } from '../mova/ui/segmented-tabs.jsx';
 
-const DEFAULTS = { enabled: true, disabledHosts: [], underline: 'every', trigger: 'hover', context: true };
+const DEFAULTS = { enabled: true, disabledHosts: [], underline: 'every', trigger: 'hover', context: true, pdf: true };
 const LM = { expectedInputs: [{ type: 'text', languages: ['en'] }], expectedOutputs: [{ type: 'text', languages: ['en'] }] };
 const MODEL = {
   available: 'On-device model ready',
@@ -91,6 +91,9 @@ function Popup() {
       </Row>
       <Row title="Meaning from context" note={model && MODEL[model]}>
         <Switch label="Meaning from context" checked={settings.context} onChange={setContext} />
+      </Row>
+      <Row title="Open PDFs here" note="Bubbles in PDFs too">
+        <Switch label="Open PDFs here" checked={settings.pdf} onChange={(v) => save({ pdf: v })} />
       </Row>
       <div className="flex flex-col gap-1.5">
         <div className="text-[11px] ab-soft">Underline</div>

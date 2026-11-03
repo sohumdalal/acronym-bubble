@@ -20,7 +20,8 @@
 //      names it, inside the window
 //   5. the extension logged no errors
 //
-// A PDF is expected to get nothing: Chrome's viewer runs no content scripts.
+// A PDF goes to the extension's own viewer, so the same rules hold there,
+// on its text layer.
 const fs = require('fs');
 const os = require('os');
 const path = require('path');
@@ -117,7 +118,8 @@ async function main() {
       const res = await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 30000 });
       const type = ((res && res.headers()['content-type']) || '').split(';')[0];
       format = kind(type, url);
-      await page.waitForTimeout(SETTLE);
+      // A PDF moves to the viewer, which then draws its pages.
+      await page.waitForTimeout(format === 'pdf' ? SETTLE + 3000 : SETTLE);
       state = await page.evaluate(harvest);
 
       if (state.strayHosts) problems.push({ why: 'an element of ours sits inside the page', text: `${state.strayHosts}` });
@@ -143,12 +145,10 @@ async function main() {
         if (args.shots) await page.screenshot({ path: path.join(SHOTS, `${String(i).padStart(3, '0')}.png`) });
       }
     } catch (err) {
-      // A PDF downloads or opens in Chrome's viewer; either way, nothing of
-      // ours runs there, which is the expected result.
-      if (format !== 'pdf') problems.push({ why: 'page did not load', text: err.message.split('\n')[0] });
+      problems.push({ why: 'page did not load', text: err.message.split('\n')[0] });
     }
     for (const e of errors) problems.push({ why: 'extension logged an error', text: e });
-    if (format === 'pdf' && state && state.marks) problems.push({ why: 'a PDF got underlines (update the format matrix)', text: '' });
+    if (format === 'pdf' && !page.url().includes('/src/pdf/viewer.html')) problems.push({ why: 'a PDF stayed in Chrome\'s viewer', text: page.url() });
 
     results.push({ url, format, marks: state ? state.marks : 0, opened: state && state.target ? state.target.term : null, problems });
     console.log(`  ${problems.length ? '✗' : '✓'} ${format.padEnd(8)} ${String(state ? state.marks : 0).padStart(5)} marks  ${url.slice(0, 90)}`);

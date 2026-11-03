@@ -1,0 +1,32 @@
+<!doctype html>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>PDF</title>
+<link rel="stylesheet" href="../../dist/pdf_viewer.css" />
+<link rel="stylesheet" href="viewer.css" />
+<link rel="stylesheet" href="../content.css" />
+<body>
+  <header class="bar">
+    <span class="mark" aria-hidden="true">ab</span>
+    <h1 id="name">PDF</h1>
+    <span class="grow"></span>
+    <span class="muted" id="pages"></span>
+    <span class="zoom">
+      <button type="button" id="out" aria-label="Zoom out">−</button>
+      <span id="scale" class="muted">100%</span>
+      <button type="button" id="in" aria-label="Zoom in">+</button>
+    </span>
+    <a href="#" id="original">Open in Chrome's viewer</a>
+  </header>
+  <div id="viewerContainer">
+    <div id="viewer" class="pdfViewer"></div>
+  </div>
+  <div id="error" class="error" hidden>
+    <p id="why">This PDF did not open here.</p>
+    <a href="#" id="fallback">Open it in Chrome's viewer</a>
+  </div>
+  <script src="../dict.js"></script>
+  <script src="../lib/find.js"></script>
+  <script src="../content.js"></script>
+  <script type="module" src="../../dist/viewer.js"></script>
+</body>

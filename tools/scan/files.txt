@@ -25,5 +25,6 @@ https://www.rfc-editor.org/rfc/rfc9110.txt
 # JSON
 https://api.github.com/repos/kubernetes/kubernetes
 
-# PDF
+# PDF, one whose URL has no .pdf and one whose URL does
 https://arxiv.org/pdf/1706.03762
+https://www.rfc-editor.org/rfc/rfc9110.pdf

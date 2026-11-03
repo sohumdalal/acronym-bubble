@@ -40,11 +40,11 @@ function reporter() {
 }
 
 // One file format: does a bubble open on `word` when Chrome shows the file?
-function format(name, file, { word = 'API', expect, note, url }) {
+function format(name, file, { word = 'API', expect, note, url, settle }) {
   return {
     name: `format · ${name}`,
     async run(t, { ab, site }) {
-      const page = await open(ab, url ? url(site) : site.url(file));
+      const page = await open(ab, url ? url(site) : site.url(file), { settle });
       const r = await opens(page, word, null);
       const got = r.ok ? 'works' : 'none';
       matrix.push({ format: name, got, expect, why: r.ok ? '' : page.__failed || (r.found ? 'text is there, no bubble' : 'no text in the DOM'), note });
@@ -149,8 +149,8 @@ const CASES = [
       await popup.goto(`chrome-extension://${ab.id}/src/popup/popup.html`);
       await popup.waitForTimeout(500);
       t.ok('popup renders its choices', (await popup.locator('button[aria-pressed]').count()) === 5);
-      // On, and Meaning from context; This site hides on an extension page.
-      t.ok('popup renders its switches', (await popup.locator('.ab-switch input[type=checkbox]').count()) === 2);
+      // On, Meaning from context and PDFs; This site hides on an extension page.
+      t.ok('popup renders its switches', (await popup.locator('.ab-switch input[type=checkbox]').count()) === 3);
       await shot(popup, 'popup');
       await popup.emulateMedia({ colorScheme: 'dark' });
       const bg = await popup.evaluate(() => getComputedStyle(document.body).backgroundColor);
@@ -168,12 +168,57 @@ const CASES = [
   format('JSON', 'data.json', { expect: 'works' }),
   format('XML', 'feed.xml', { word: 'REST', expect: 'none', note: "Chrome's XML tree viewer has no page body" }),
   format('SVG', 'logo.svg', { word: 'REST', expect: 'none', note: 'drawn text, not page text' }),
-  format('PDF', 'doc.pdf', { word: 'REST', expect: 'none', note: "Chrome's PDF viewer does not run content scripts" }),
+  format('PDF', 'doc.pdf', { word: 'REST', expect: 'works', settle: 2500, note: "in Acronym Bubble's viewer (PDF.js)" }),
   format('local file (file://)', null, {
     expect: 'works',
     note: 'unpacked; a store install needs "Allow access to file URLs"',
     url: () => pathToFileURL(path.join(SITES, 'docs.html')).href,
   }),
+
+  // ── PDFs ──
+  {
+    name: "pdf · the viewer: text layer, underlines, bubble, Chrome's viewer once, off switch",
+    async run(t, { ab, site }) {
+      const page = await open(ab, site.url('doc.pdf'), { settle: 2500 });
+      t.ok('the tab moved to the viewer', page.url().startsWith(`chrome-extension://${ab.id}/src/pdf/viewer.html?file=`), page.url());
+      const layer = await page.evaluate(() => document.querySelector('.textLayer') && document.querySelector('.textLayer').textContent);
+      t.ok('the page has a text layer', layer && layer.includes('REST API'), String(layer));
+      const marks = await page.evaluate(() => (CSS.highlights.get('acronym-bubble') || { size: 0 }).size);
+      t.ok('acronyms in the PDF are underlined', marks >= 3, `marks: ${marks}`);
+      const r = await opens(page, 'REST', 'Representational State Transfer', { selector: '.textLayer' });
+      t.ok('REST in the PDF opens a bubble', r.ok, String(r.text));
+      await hover(page, 'HTTPS', { selector: '.textLayer' });
+      await shot(page, 'pdf-viewer', { x: 0, y: 0, width: 1100, height: 420 });
+      await away(page);
+      t.ok('the title is the file name', (await page.title()) === 'doc.pdf', await page.title());
+      t.ok('the page count shows', (await page.textContent('#pages')) === '1 / 1', await page.textContent('#pages'));
+
+      // Open in Chrome's viewer: this load is let through, the next is not.
+      await page.click('#original');
+      await page.waitForTimeout(1500);
+      t.ok("Chrome's viewer gets the PDF once", page.url() === site.url('doc.pdf'), page.url());
+      await page.goto(site.url('doc.pdf')).catch(() => {});
+      await page.waitForTimeout(1500);
+      t.ok('the next load goes to the viewer again', page.url().includes('/src/pdf/viewer.html'), page.url());
+
+      await ab.settings({ pdf: false });
+      await page.goto(site.url('doc.pdf')).catch(() => {});
+      await page.waitForTimeout(1500);
+      t.ok('with PDFs off, Chrome keeps the PDF', page.url() === site.url('doc.pdf'), page.url());
+      await ab.settings();
+      t.clean(page);
+      await page.close();
+    },
+  },
+  {
+    name: 'pdf · a PDF that will not load shows the way to Chrome\'s viewer',
+    async run(t, { ab }) {
+      const page = await open(ab, `chrome-extension://${ab.id}/src/pdf/viewer.html?file=${encodeURIComponent('http://127.0.0.1:9/missing.pdf')}`, { settle: 1500 });
+      t.ok('the error shows', await page.isVisible('#error'));
+      t.ok('it links to the PDF', (await page.getAttribute('#fallback', 'href')) === 'http://127.0.0.1:9/missing.pdf');
+      await page.close();
+    },
+  },
 
   // ── Page types ──
   {

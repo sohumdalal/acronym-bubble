@@ -7,7 +7,7 @@
 (() => {
   const AB = self.AB;
   const NAME = 'acronym-bubble';
-  const DEFAULTS = { enabled: true, disabledHosts: [], underline: 'every', trigger: 'hover', context: true };
+  const DEFAULTS = { enabled: true, disabledHosts: [], underline: 'every', trigger: 'hover', context: true, pdf: true };
   const DELAY = 300; // pointer rest before a bubble opens
   const SWAP = 120; // ...or before it moves to another acronym once open
   const GRACE = 140; // time to cross from the word into the bubble
@@ -19,7 +19,9 @@
   const TEXT_FILE = !/html|xml|svg/.test(document.contentType);
   const SKIP = `script,style,noscript,template,textarea,input,select,code,${TEXT_FILE ? '' : 'pre,'}kbd,samp,var,svg,math,[contenteditable=""],[contenteditable="true"],[data-acronym-bubble]`;
 
-  const site = location.hostname.replace(/^www\./, '');
+  // In the PDF viewer the site is the PDF's, not the extension's.
+  const pdfFile = location.protocol === 'chrome-extension:' && new URLSearchParams(location.search).get('file');
+  const site = (pdfFile ? new URL(pdfFile, location.href).hostname : location.hostname).replace(/^www\./, '');
   let settings = { ...DEFAULTS };
   let on = false;
 

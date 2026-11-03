@@ -1,7 +1,7 @@
 // The keyboard shortcut, an OFF badge on the toolbar icon while the
-// extension is turned off, and the on-device model that reads an acronym's
-// context.
-const DEFAULTS = { enabled: true, disabledHosts: [], underline: 'every', trigger: 'hover', context: true };
+// extension is turned off, the on-device model that reads an acronym's
+// context, and sending PDFs to the extension's own viewer.
+const DEFAULTS = { enabled: true, disabledHosts: [], underline: 'every', trigger: 'hover', context: true, pdf: true };
 
 async function current() {
   const { settings } = await chrome.storage.sync.get('settings');
@@ -90,5 +90,67 @@ chrome.runtime.onMessage.addListener((msg, _sender, reply) => {
       console.warn('[Acronym Bubble] the model did not answer:', err);
       reply(null);
     });
+  return true;
+});
+
+// ── PDFs ────────────────────────────────────────────────────────────────
+// Chrome's PDF viewer runs no content scripts, so a PDF opened in a tab
+// goes to src/pdf/viewer.html instead, which draws it with PDF.js and runs
+// the extension's own scripts over its text. The response's content type
+// decides, because many PDF URLs do not end in .pdf. Downloads, POST
+// results and PDFs inside frames are left to Chrome. "Open in Chrome's
+// viewer" lets the next load of that one URL through.
+//
+// The headers only mark the tab. It moves once Chrome has committed the
+// PDF's navigation: a tab moved before that is moved back by the navigation
+// still in flight.
+
+const VIEWER = chrome.runtime.getURL('src/pdf/viewer.html');
+const viewerFor = (url) => `${VIEWER}?file=${encodeURIComponent(url)}`;
+
+async function takesPdfs() {
+  const s = await current();
+  return s.enabled && s.pdf;
+}
+
+// URLs to let through once, kept in session storage because the worker can
+// stop between the click and the load.
+async function passOnce(url) {
+  const { pdfBypass = [] } = await chrome.storage.session.get('pdfBypass');
+  if (!pdfBypass.includes(url)) return false;
+  await chrome.storage.session.set({ pdfBypass: pdfBypass.filter((u) => u !== url) });
+  return true;
+}
+
+const pending = new Map(); // tab id -> the PDF URL it is loading
+
+chrome.webRequest.onHeadersReceived.addListener(
+  (d) => {
+    if (d.tabId < 0 || d.method !== 'GET') return;
+    const header = (name) => (d.responseHeaders.find((h) => h.name.toLowerCase() === name) || {}).value || '';
+    if (!/^application\/(x-)?pdf\b/i.test(header('content-type'))) return;
+    if (/^\s*attachment/i.test(header('content-disposition'))) return;
+    pending.set(d.tabId, d.url);
+  },
+  { urls: ['http://*/*', 'https://*/*'], types: ['main_frame'] },
+  ['responseHeaders'],
+);
+
+// Local files have no HTTP headers, so the name decides. Needs "Allow access
+// to file URLs" on the extension's card.
+chrome.webNavigation.onCommitted.addListener(async ({ tabId, frameId, url }) => {
+  if (frameId !== 0) return;
+  const pdf = pending.get(tabId) === url || /^file:.*\.pdf$/i.test(url);
+  pending.delete(tabId);
+  if (!pdf || !(await takesPdfs()) || (await passOnce(url))) return;
+  chrome.tabs.update(tabId, { url: viewerFor(url) });
+});
+chrome.tabs.onRemoved.addListener((tabId) => pending.delete(tabId));
+
+chrome.runtime.onMessage.addListener((msg, _sender, reply) => {
+  if (msg?.type !== 'pdf-bypass') return false;
+  chrome.storage.session.get('pdfBypass').then(({ pdfBypass = [] }) =>
+    chrome.storage.session.set({ pdfBypass: [...pdfBypass, msg.url] }).then(() => reply(true)),
+  );
   return true;
 });

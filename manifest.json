@@ -4,7 +4,8 @@
   "version": "0.1.0",
   "description": "Hover an acronym on any page to see what it stands for, with a search link for more.",
   "minimum_chrome_version": "128",
-  "permissions": ["storage"],
+  "permissions": ["storage", "webRequest", "webNavigation"],
+  "host_permissions": ["<all_urls>"],
   "background": { "service_worker": "src/background.js" },
   "action": {
     "default_popup": "src/popup/popup.html",

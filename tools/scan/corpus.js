@@ -10,8 +10,8 @@
 //                             [--limit 1000] [--concurrency 4] [--out scan-report.json]
 //
 // HTML, plain text, Markdown and JSON are read. A PDF is counted but not
-// read: its text needs a PDF reader, and in Chrome the extension does not
-// run on PDFs anyway (see the e2e format matrix).
+// read here, because its text needs a PDF reader; scan:browser checks PDFs
+// in the extension's own viewer.
 const fs = require('fs');
 const path = require('path');
 const args = require('./lib/args.js')();

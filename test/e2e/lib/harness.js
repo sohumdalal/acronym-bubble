@@ -7,7 +7,7 @@ const { chromium } = require('playwright');
 
 const ROOT = path.join(__dirname, '..', '..', '..');
 const SHOTS = path.join(__dirname, '..', '..', 'shots');
-const DEFAULTS = { enabled: true, disabledHosts: [], underline: 'every', trigger: 'hover', context: true };
+const DEFAULTS = { enabled: true, disabledHosts: [], underline: 'every', trigger: 'hover', context: true, pdf: true };
 
 async function launch({ headed = !!process.env.HEADED } = {}) {
   const profile = fs.mkdtempSync(path.join(os.tmpdir(), 'ab-e2e-'));
@@ -21,6 +21,9 @@ async function launch({ headed = !!process.env.HEADED } = {}) {
   });
   let worker = context.serviceWorkers()[0];
   if (!worker) worker = await context.waitForEvent('serviceworker', { timeout: 20000 });
+  // A just-installed worker's webRequest listeners reach the browser a
+  // moment after the worker starts; a PDF loaded before then is missed.
+  await new Promise((r) => setTimeout(r, 1000));
   fs.mkdirSync(SHOTS, { recursive: true });
   return {
     context,
