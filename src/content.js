@@ -10,7 +10,7 @@
   const DEFAULTS = { enabled: true, disabledHosts: [], underline: 'every', trigger: 'hover', context: true };
   const DELAY = 300; // pointer rest before a bubble opens
   const SWAP = 120; // ...or before it moves to another acronym once open
-  const GRACE = 200; // time to cross from the word into the bubble
+  const GRACE = 140; // time to cross from the word into the bubble
   const MAX_MARKS = 5000;
   const BLOCK = 'p,li,td,th,dd,dt,blockquote,figcaption,caption,h1,h2,h3,h4,h5,h6,section,article,main';
   const CONTEXT = 600; // characters of text around the acronym that the model reads
