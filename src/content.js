@@ -1,0 +1,311 @@
+// Finds acronyms on the page, underlines them faintly, and shows a bubble
+// with what one stands for when the pointer rests on it.
+//
+// The page's DOM is never changed. The underline is a CSS custom highlight
+// over Ranges, and the hover reads the word under the pointer with
+// caretPositionFromPoint, so a page's own scripts never see our nodes.
+(() => {
+  const AB = self.AB;
+  const NAME = 'acronym-bubble';
+  const DEFAULTS = { enabled: true, disabledHosts: [], underline: 'every', trigger: 'hover' };
+  const DELAY = 300; // pointer rest before a bubble opens
+  const SWAP = 120; // ...or before it moves to another acronym once open
+  const GRACE = 200; // time to cross from the word into the bubble
+  const MAX_MARKS = 5000;
+  const SKIP = 'script,style,noscript,template,textarea,input,select,code,pre,kbd,samp,var,svg,math,[contenteditable=""],[contenteditable="true"],[data-acronym-bubble]';
+
+  const site = location.hostname.replace(/^www\./, '');
+  let settings = { ...DEFAULTS };
+  let on = false;
+
+  const page = {}; // term -> meaning, from this page's own text
+  const seen = new Set(); // terms underlined, for underline: 'first'
+  const marks = new Highlight();
+  let observer = null;
+
+  // ── Scan ──────────────────────────────────────────────────────────────
+
+  function allowed(node) {
+    const el = node.parentElement;
+    return !!el && !el.closest(SKIP) && !el.isContentEditable;
+  }
+
+  function textNodes(root) {
+    if (root.nodeType === Node.TEXT_NODE) return allowed(root) ? [root] : [];
+    const out = [];
+    const walk = document.createTreeWalker(root, NodeFilter.SHOW_TEXT, {
+      acceptNode: (n) => (/[A-Z].*[A-Z]/s.test(n.nodeValue) && allowed(n) ? NodeFilter.FILTER_ACCEPT : NodeFilter.FILTER_REJECT),
+    });
+    while (walk.nextNode()) out.push(walk.currentNode);
+    return out;
+  }
+
+  // The page's own definitions: "Single Sign-On (SSO)" and <abbr title>.
+  function learn(root, nodes) {
+    const found = AB.definitions(nodes.map((n) => n.nodeValue).join(' '));
+    if (root.querySelectorAll) {
+      for (const abbr of root.querySelectorAll('abbr[title]')) {
+        const term = abbr.textContent.trim();
+        if (/^[A-Za-z][A-Za-z0-9&]*$/.test(term) && abbr.title.trim()) found[term] = abbr.title.trim();
+      }
+    }
+    for (const [term, meaning] of Object.entries(found)) if (!page[term]) page[term] = meaning;
+  }
+
+  function mark(nodes) {
+    if (settings.underline === 'none') return;
+    for (const node of nodes) {
+      const text = node.nodeValue;
+      AB.TOKEN.lastIndex = 0;
+      let m;
+      while ((m = AB.TOKEN.exec(text))) {
+        if (marks.size >= MAX_MARKS) return;
+        const hit = AB.resolve(m[0], page, text);
+        if (!hit) continue;
+        if (settings.underline === 'first') {
+          if (seen.has(hit.term)) continue;
+          seen.add(hit.term);
+        }
+        const range = new Range();
+        range.setStart(node, m.index);
+        range.setEnd(node, m.index + m[0].length);
+        marks.add(range);
+      }
+    }
+  }
+
+  function scan(root) {
+    const nodes = textNodes(root);
+    learn(root, nodes);
+    mark(nodes);
+  }
+
+  // Pages that load more as you read: scan what was added, in one go.
+  let added = [];
+  let flushTimer = 0;
+  function onMutate(records) {
+    for (const r of records) {
+      if (r.type === 'characterData') added.push(r.target);
+      else for (const n of r.addedNodes) added.push(n);
+    }
+    clearTimeout(flushTimer);
+    flushTimer = setTimeout(() => {
+      const roots = added.filter((n) => n.isConnected);
+      added = [];
+      for (const r of marks) if (r.collapsed) marks.delete(r);
+      for (const root of roots) scan(root);
+    }, 400);
+  }
+
+  // ── Hover ─────────────────────────────────────────────────────────────
+
+  let pointer = null; // { x, y, alt }
+  let frame = 0;
+  let current = null; // the hit the bubble shows
+  let openTimer = 0;
+  let hideTimer = 0;
+  let overBubble = false;
+
+  // The acronym under a point, or null.
+  function hitAt(x, y) {
+    const pos = document.caretPositionFromPoint(x, y);
+    if (!pos || !pos.offsetNode || pos.offsetNode.nodeType !== Node.TEXT_NODE) return null;
+    const node = pos.offsetNode;
+    if (!allowed(node)) return null;
+    const text = node.nodeValue;
+    // The caret can sit just after the last letter of the word.
+    for (const i of [pos.offset, pos.offset - 1]) {
+      const tok = AB.tokenAt(text, i);
+      if (!tok) continue;
+      const range = new Range();
+      range.setStart(node, tok.start);
+      range.setEnd(node, tok.end);
+      const rect = [...range.getClientRects()].find((b) => x >= b.left - 1 && x <= b.right + 1 && y >= b.top - 1 && y <= b.bottom + 1);
+      if (!rect) return null;
+      const hit = AB.resolve(tok.term, page, text);
+      return hit && { ...hit, node, start: tok.start, rect };
+    }
+    return null;
+  }
+
+  const same = (a, b) => a && b && a.node === b.node && a.start === b.start;
+
+  function check() {
+    frame = 0;
+    if (!on || !pointer) return;
+    let hit = hitAt(pointer.x, pointer.y);
+    if (hit && settings.trigger === 'alt' && !pointer.alt && !same(hit, current)) hit = null;
+    if (same(hit, current)) {
+      clearTimeout(hideTimer);
+      return;
+    }
+    clearTimeout(openTimer);
+    if (!hit) {
+      if (current && !overBubble) hideSoon();
+      return;
+    }
+    openTimer = setTimeout(() => show(hit), current ? SWAP : DELAY);
+  }
+
+  function onMove(e) {
+    // A held button is a text selection or a drag.
+    if (e.buttons) return;
+    // On the bubble itself, which mouseenter can miss while it springs in.
+    if (e.target instanceof Element && e.target.hasAttribute('data-acronym-bubble')) {
+      overBubble = true;
+      clearTimeout(hideTimer);
+      return;
+    }
+    pointer = { x: e.clientX, y: e.clientY, alt: e.altKey };
+    if (!frame) frame = requestAnimationFrame(check);
+  }
+
+  function onKey(e) {
+    if (e.key === 'Escape') hide();
+    if (e.key === 'Alt' && settings.trigger === 'alt' && pointer) {
+      pointer.alt = e.type === 'keydown';
+      if (pointer.alt && !frame) frame = requestAnimationFrame(check);
+    }
+  }
+
+  function hideSoon() {
+    clearTimeout(hideTimer);
+    hideTimer = setTimeout(hide, GRACE);
+  }
+
+  // ── Bubble ────────────────────────────────────────────────────────────
+
+  let bubble = null;
+  function loadBubble() {
+    bubble =
+      bubble ||
+      import(chrome.runtime.getURL('dist/bubble.js'))
+        .then((m) =>
+          m.mount({
+            cssUrl: chrome.runtime.getURL('dist/mova.css'),
+            onEnter: () => {
+              overBubble = true;
+              clearTimeout(hideTimer);
+            },
+            onLeave: () => {
+              overBubble = false;
+              hideSoon();
+            },
+            onMore: () => setTimeout(hide, 0),
+          }),
+        )
+        .catch((err) => {
+          console.warn('[Acronym Bubble] the bubble did not load, using the plain one:', err);
+          return plainBubble();
+        });
+    return bubble;
+  }
+
+  // Light or dark, from the background the word is drawn on.
+  function themeAt(el) {
+    for (; el; el = el.parentElement) {
+      const m = getComputedStyle(el).backgroundColor.match(/[\d.]+/g);
+      if (!m || (m.length > 3 && +m[3] < 0.5)) continue;
+      const [r, g, b] = m.map(Number);
+      return 0.2126 * r + 0.7152 * g + 0.0722 * b < 128 ? 'dark' : 'light';
+    }
+    return matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+  }
+
+  function show(hit) {
+    clearTimeout(hideTimer);
+    current = hit;
+    const theme = themeAt(hit.node.parentElement);
+    const view = {
+      key: `${hit.term}:${hit.start}:${Math.round(hit.rect.top)}:${Math.round(hit.rect.left)}`,
+      term: hit.term,
+      meanings: hit.meanings,
+      source: hit.source,
+      url: AB.searchUrl(hit),
+      rect: { top: hit.rect.top, bottom: hit.rect.bottom, left: hit.rect.left, width: hit.rect.width },
+    };
+    loadBubble().then((b) => current === hit && b.show(view, theme));
+  }
+
+  function hide() {
+    clearTimeout(openTimer);
+    clearTimeout(hideTimer);
+    if (!current) return;
+    current = null;
+    overBubble = false;
+    if (bubble) bubble.then((b) => b.hide());
+  }
+
+  // Used only if dist/bubble.js fails to load: the same words, no motion.
+  function plainBubble() {
+    const host = document.createElement('div');
+    host.setAttribute('data-acronym-bubble', '');
+    host.style.cssText = 'all:initial;position:fixed;z-index:2147483647;display:none;';
+    const shadow = host.attachShadow({ mode: 'open' });
+    shadow.innerHTML = `<style>
+      div{max-width:280px;padding:6px 12px;background:#181818;color:#fff;border:1px solid #303030;
+        font:400 13px/1.4 Inter,-apple-system,system-ui,sans-serif}
+      b{font-size:11px;font-weight:600;letter-spacing:1.1px} a{color:#fff;font-size:11px;margin-left:12px}
+    </style><div><b></b><a target="_blank" rel="noopener noreferrer">More ↗</a><br><span></span></div>`;
+    host.addEventListener('mouseenter', () => ((overBubble = true), clearTimeout(hideTimer)));
+    host.addEventListener('mouseleave', () => ((overBubble = false), hideSoon()));
+    document.documentElement.append(host);
+    return {
+      show(view) {
+        shadow.querySelector('b').textContent = view.term;
+        shadow.querySelector('span').textContent = view.meanings.join(' · ');
+        shadow.querySelector('a').href = view.url;
+        host.style.display = 'block';
+        host.style.left = `${Math.max(8, view.rect.left)}px`;
+        host.style.top = `${view.rect.bottom + 6}px`;
+      },
+      hide() {
+        host.style.display = 'none';
+      },
+    };
+  }
+
+  // ── On and off ────────────────────────────────────────────────────────
+
+  function start() {
+    on = true;
+    CSS.highlights.set(NAME, marks);
+    scan(document.body);
+    observer = new MutationObserver(onMutate);
+    observer.observe(document.body, { childList: true, subtree: true, characterData: true });
+    addEventListener('mousemove', onMove, { passive: true });
+    addEventListener('keydown', onKey, true);
+    addEventListener('keyup', onKey, true);
+    addEventListener('scroll', hide, { passive: true, capture: true });
+    addEventListener('blur', hide);
+  }
+
+  function stop() {
+    on = false;
+    hide();
+    if (observer) observer.disconnect();
+    clearTimeout(flushTimer);
+    added = [];
+    marks.clear();
+    seen.clear();
+    CSS.highlights.delete(NAME);
+    removeEventListener('mousemove', onMove, { passive: true });
+    removeEventListener('keydown', onKey, true);
+    removeEventListener('keyup', onKey, true);
+    removeEventListener('scroll', hide, { capture: true });
+    removeEventListener('blur', hide);
+  }
+
+  function apply(next) {
+    settings = { ...DEFAULTS, ...(next || {}) };
+    const want = settings.enabled && !settings.disabledHosts.includes(site);
+    if (on) stop();
+    if (want) start();
+  }
+
+  if (!document.body || !CSS.highlights || !document.caretPositionFromPoint) return;
+  chrome.storage.sync.get('settings').then(({ settings: s }) => apply(s));
+  chrome.storage.onChanged.addListener((changes, area) => {
+    if (area === 'sync' && changes.settings) apply(changes.settings.newValue);
+  });
+})();

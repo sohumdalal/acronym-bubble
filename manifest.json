@@ -1,0 +1,32 @@
+{
+  "manifest_version": 3,
+  "name": "Acronym Bubble",
+  "version": "0.1.0",
+  "description": "Hover an acronym on any page to see what it stands for, with a search link for more.",
+  "minimum_chrome_version": "128",
+  "permissions": ["storage"],
+  "background": { "service_worker": "src/background.js" },
+  "action": {
+    "default_popup": "src/popup/popup.html",
+    "default_title": "Acronym Bubble",
+    "default_icon": { "16": "icons/16.png", "32": "icons/32.png", "48": "icons/48.png", "128": "icons/128.png" }
+  },
+  "icons": { "16": "icons/16.png", "32": "icons/32.png", "48": "icons/48.png", "128": "icons/128.png" },
+  "commands": {
+    "toggle": {
+      "suggested_key": { "default": "Alt+Shift+A" },
+      "description": "Turn Acronym Bubble on or off"
+    }
+  },
+  "content_scripts": [
+    {
+      "matches": ["<all_urls>"],
+      "js": ["src/dict.js", "src/lib/find.js", "src/content.js"],
+      "css": ["src/content.css"],
+      "run_at": "document_idle"
+    }
+  ],
+  "web_accessible_resources": [
+    { "resources": ["dist/bubble.js", "dist/mova.css", "dist/chunk-*.js", "dist/LICENSE.mova"], "matches": ["<all_urls>"] }
+  ]
+}

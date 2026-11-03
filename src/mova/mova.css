@@ -1,0 +1,123 @@
+/*
+ * Mova on Acronym Bubble: Tailwind's utilities for the vendored Mova sources,
+ * plus the skin that maps Mova's light and dark literals to the Ferrari
+ * tokens (DESIGN.md). `bun run build` writes this to dist/mova.css. The
+ * bubble adopts it inside its shadow root; the popup links it.
+ *
+ * There is no Tailwind preflight. Mova's markup assumes preflight's border
+ * reset, so that part is applied here, inside Mova's own roots only.
+ */
+
+@tailwind components;
+@tailwind utilities;
+
+:host {
+  all: initial;
+}
+
+.mova {
+  /* Ferrari tokens, the dark set: the bubble is always drawn dark, as
+     Mova's tooltip is, and the popup swaps to the light set below. */
+  --canvas: #181818;
+  --canvas-elevated: #303030;
+  --ink: #ffffff;
+  --body: #969696;
+  --muted: #666666;
+  --hairline: #303030;
+  --primary: #da291c;
+  --focus: #f6e500;
+
+  font-family: Inter, -apple-system, system-ui, sans-serif;
+  font-size: 13px;
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+}
+
+.mova *,
+.mova ::before,
+.mova ::after {
+  box-sizing: border-box;
+  border-width: 0;
+  border-style: solid;
+  border-color: var(--hairline);
+}
+
+.mova a:focus-visible,
+.mova button:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: 2px;
+}
+
+/* ── Bubble skin (QuestionTooltip) ───────────────────────────────────────
+   Mova's light tooltip is a near-black bubble on a light page; its dark one
+   is a lifted grey with a soft border. Same here, in the tokens. */
+
+.ab-tip-light {
+  background: var(--canvas);
+  border-color: var(--hairline);
+  color: var(--ink);
+}
+
+.ab-tip-dark {
+  background: var(--canvas-elevated);
+  border-color: var(--muted);
+  color: var(--ink);
+}
+
+.ab-soft {
+  color: var(--body);
+}
+
+.ab-mark {
+  background: var(--primary);
+}
+
+.ab-link {
+  color: var(--ink);
+  text-decoration: none;
+}
+
+.ab-link:hover {
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+/* ── Popup skin (SegmentedABTabs) ─────────────────────────────────────── */
+
+.ab-page {
+  background: var(--canvas);
+  color: var(--ink);
+}
+
+.ab-seg {
+  background: var(--canvas);
+  border-color: var(--hairline);
+}
+
+.ab-seg-pill {
+  background: var(--ink);
+}
+
+.ab-seg-on {
+  color: var(--canvas);
+}
+
+.ab-seg-off {
+  color: var(--body);
+}
+
+.ab-rule {
+  background: var(--hairline);
+}
+
+@media (prefers-color-scheme: light) {
+  .mova.ab-page {
+    --canvas: #ffffff;
+    --ink: #181818;
+    --body: #666666;
+    --hairline: #d2d2d2;
+  }
+  .mova.ab-page .ab-seg {
+    background: #f7f7f7;
+  }
+}

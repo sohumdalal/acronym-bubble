@@ -1,0 +1,9 @@
+/* The underline under a known acronym. A custom highlight, so it paints
+   over the page's own text without adding a node. Faint and dotted, so it
+   reads as a hint and not as a link; it takes the page's own text colour. */
+::highlight(acronym-bubble) {
+  text-decoration-line: underline;
+  text-decoration-style: dotted;
+  text-decoration-thickness: 1px;
+  text-decoration-color: rgba(128, 128, 128, 0.7);
+}

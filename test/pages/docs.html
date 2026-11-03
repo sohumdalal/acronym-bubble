@@ -1,0 +1,23 @@
+<!doctype html>
+<meta charset="utf-8" />
+<title>Payments docs</title>
+<style>
+  html { font-size: 62.5%; }
+  body { font: 1.7rem/1.6 Georgia, serif; max-width: 68rem; margin: 4rem auto; padding: 0 2rem; }
+  body.dark { background: #0d1117; color: #e6edf3; }
+  code { background: rgba(127,127,127,.15); padding: 0 .3em; }
+</style>
+<body>
+  <h1>Getting started</h1>
+  <p id="p1">Every request to the REST API goes over HTTPS. You sign it with a JWT that your IdP issues after SSO.</p>
+  <p id="p2">We store events in a Customer Data Platform (CDP), so the CDP can replay them for your SLA reports.</p>
+  <p id="p3">Ask the IT team before you add a new <abbr title="Webhook Signing Secret">WSS</abbr> to <code>API_KEY</code>.</p>
+  <p id="p4">IMPORTANT: IT IS NOT POSSIBLE TO UNDO THIS.</p>
+  <pre id="code">curl -H "X-API: 1" https://api.example.com</pre>
+  <p id="late"></p>
+  <div style="height: 150vh"></div>
+  <script>
+    if (location.search === '?dark') document.body.className = 'dark';
+    setTimeout(() => { document.getElementById('late').textContent = 'Loaded later: the SDK talks gRPC to the CDN.'; }, 300);
+  </script>
+</body>
