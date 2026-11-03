@@ -64,6 +64,8 @@ eq('an unknown acronym with no answer shows nothing', AB.inContext(unknown, ''),
 eq('all caps is askable', AB.askable('CDP'), true);
 eq('a plural is askable', AB.askable('CDPs'), true);
 eq('a name is not askable', AB.askable('GitHub'), false);
+eq('an RFC keyword is not askable', AB.askable('MUST'), false);
+eq('an HTTP method is not askable', AB.askable('GET'), false);
 eq('shouting is not askable', AB.askable('THE', 'THE QUICK BROWN FOX JUMPS'), false);
 
 // ── Search ──

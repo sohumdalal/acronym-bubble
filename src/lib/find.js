@@ -111,11 +111,18 @@
     return null;
   }
 
+  // Words written in capitals that are not acronyms: RFC 2119 keywords, HTTP
+  // methods and labels. Found by the corpus scan (npm run scan), where specs
+  // and API docs use them hundreds of times a page.
+  const PLAIN_CAPS = new Set(
+    'MUST SHOULD SHALL MAY NOT REQUIRED OPTIONAL GET PUT POST HEAD DELETE PATCH TRACE OPTIONS CONNECT OK NOTE TODO FIXME WARNING AND OR THE YES NO NEW'.split(' '),
+  );
+
   // An all-caps token the dictionary does not know, such as CDP or B2B: worth
   // asking the model about. Mixed case (GitHub, iPhone) is a name, not an
   // acronym, and in shouting text every word is in capitals.
   function askable(term, context = '') {
-    return /^[A-Z][A-Z0-9&]{1,5}s?$/.test(term) && !shouty(context);
+    return /^[A-Z][A-Z0-9&]{1,5}s?$/.test(term) && !PLAIN_CAPS.has(term) && !shouty(context);
   }
 
   // The hit with the model's answer first. A known meaning it names moves to

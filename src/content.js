@@ -14,7 +14,10 @@
   const MAX_MARKS = 5000;
   const BLOCK = 'p,li,td,th,dd,dt,blockquote,figcaption,caption,h1,h2,h3,h4,h5,h6,section,article,main';
   const CONTEXT = 600; // characters of text around the acronym that the model reads
-  const SKIP = 'script,style,noscript,template,textarea,input,select,code,pre,kbd,samp,var,svg,math,[contenteditable=""],[contenteditable="true"],[data-acronym-bubble]';
+  // Chrome shows a plain-text file (.txt, a raw .md, JSON) as one <pre> in a
+  // page it builds. That <pre> is the document, not a code block.
+  const TEXT_FILE = !/html|xml|svg/.test(document.contentType);
+  const SKIP = `script,style,noscript,template,textarea,input,select,code,${TEXT_FILE ? '' : 'pre,'}kbd,samp,var,svg,math,[contenteditable=""],[contenteditable="true"],[data-acronym-bubble]`;
 
   const site = location.hostname.replace(/^www\./, '');
   let settings = { ...DEFAULTS };
@@ -160,6 +163,15 @@
     }
     pointer = { x: e.clientX, y: e.clientY, alt: e.altKey };
     if (!frame) frame = requestAnimationFrame(check);
+  }
+
+  // The pointer left this document: out of the window, or out of this frame
+  // into its parent. No more mousemoves come here, so close now.
+  function onOut(e) {
+    if (e.relatedTarget || overBubble) return;
+    pointer = null;
+    clearTimeout(openTimer);
+    if (current) hideSoon();
   }
 
   function onKey(e) {
@@ -322,6 +334,7 @@
     observer = new MutationObserver(onMutate);
     observer.observe(document.body, { childList: true, subtree: true, characterData: true });
     addEventListener('mousemove', onMove, { passive: true });
+    document.addEventListener('mouseout', onOut, { passive: true });
     addEventListener('keydown', onKey, true);
     addEventListener('keyup', onKey, true);
     addEventListener('scroll', hide, { passive: true, capture: true });
@@ -338,6 +351,7 @@
     seen.clear();
     CSS.highlights.delete(NAME);
     removeEventListener('mousemove', onMove, { passive: true });
+    document.removeEventListener('mouseout', onOut, { passive: true });
     removeEventListener('keydown', onKey, true);
     removeEventListener('keyup', onKey, true);
     removeEventListener('scroll', hide, { capture: true });
