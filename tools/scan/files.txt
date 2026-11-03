@@ -1,0 +1,29 @@
+# Fixed URLs, one per file format and field, scanned with the sitemap pages.
+# Each line is a URL; a comment after it says what it covers.
+
+# Ambiguous acronyms in their own fields
+https://en.wikipedia.org/wiki/Confidence_interval            # CI, statistics
+https://en.wikipedia.org/wiki/Continuous_integration         # CI, software
+https://en.wikipedia.org/wiki/Public_relations               # PR, business
+https://en.wikipedia.org/wiki/Tuberculosis                   # TB, medicine
+
+# HTML docs and specs
+https://developer.mozilla.org/en-US/docs/Web/HTTP/Overview
+https://kubernetes.io/docs/concepts/overview/
+https://html.spec.whatwg.org/multipage/introduction.html
+https://www.rfc-editor.org/rfc/rfc9110.html
+
+# Rendered Markdown
+https://github.com/kubernetes/kubernetes                     # README on GitHub
+https://github.com/microsoft/vscode/blob/main/README.md
+
+# Raw Markdown and plain text
+https://raw.githubusercontent.com/kubernetes/kubernetes/master/README.md
+https://raw.githubusercontent.com/microsoft/vscode/main/README.md
+https://www.rfc-editor.org/rfc/rfc9110.txt
+
+# JSON
+https://api.github.com/repos/kubernetes/kubernetes
+
+# PDF
+https://arxiv.org/pdf/1706.03762

@@ -1,0 +1,4 @@
+RFC-style notes
+
+Every request to the REST API goes over HTTPS.
+The SDK talks gRPC to the CDN.

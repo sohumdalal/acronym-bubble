@@ -3,3 +3,7 @@ node_modules/
 dist/
 *.zip
 test/shots/
+scan-report.json
+browser-report.json
+scan-shots/
+tools/scan/urls.txt

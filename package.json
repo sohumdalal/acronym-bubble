@@ -7,7 +7,10 @@
     "build": "rm -rf dist && bun build src/mova/bubble.jsx src/popup/popup.jsx --outdir dist --splitting --format esm --production --entry-naming '[name].[ext]' --chunk-naming 'chunk-[hash].[ext]' && tailwindcss -c src/mova/tailwind.config.cjs -i src/mova/mova.css -o dist/mova.css --minify && cp src/mova/LICENSE.mova dist/",
     "icons": "node tools/make-icons.js",
     "test": "node test/find.test.js",
-    "e2e": "node test/e2e.js",
+    "e2e": "node test/e2e/run.js",
+    "scan:discover": "node tools/scan/discover.js",
+    "scan": "node tools/scan/corpus.js",
+    "scan:browser": "node tools/scan/browser.js",
     "check": "bun run build && npm test && npm run e2e",
     "zip": "bun run build && rm -f acronym-bubble.zip && zip -qr acronym-bubble.zip manifest.json src/*.js src/*.css src/lib src/popup/popup.html dist icons -x '*.DS_Store'"
   },

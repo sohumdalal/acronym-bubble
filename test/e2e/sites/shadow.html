@@ -1,0 +1,18 @@
+<!doctype html>
+<meta charset="utf-8" />
+<title>Web components</title>
+<!-- Text inside an open and a closed shadow root, as design-system docs
+     and app shells often render it. -->
+<body style="font: 16px/1.5 Georgia, serif; margin: 24px">
+  <p id="light">Outside any component: the REST API.</p>
+  <doc-card id="open"></doc-card>
+  <doc-card id="closed" data-mode="closed"></doc-card>
+  <script>
+    customElements.define('doc-card', class extends HTMLElement {
+      connectedCallback() {
+        const root = this.attachShadow({ mode: this.dataset.mode || 'open' });
+        root.innerHTML = `<p style="font: 16px Georgia">In a ${this.dataset.mode || 'open'} shadow root: the CDN serves JSON.</p>`;
+      }
+    });
+  </script>
+</body>

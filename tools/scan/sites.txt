@@ -1,0 +1,45 @@
+# Seed domains for the scanner. One per line, comments with #.
+# `npm run scan:discover` reads each domain's sitemap and writes page URLs to
+# tools/scan/urls.txt. Chosen for spread across fields, because the same
+# acronym means different things in each: CI is a build in software and an
+# interval in statistics. Not chosen for popularity.
+
+# Software and cloud docs
+kubernetes.io
+docs.docker.com
+docs.github.com
+developer.mozilla.org
+www.postgresql.org
+redis.io
+docs.python.org
+nodejs.org
+go.dev
+www.terraform.io
+
+# Security and networking
+owasp.org
+www.cloudflare.com
+blog.cloudflare.com
+
+# Data, ML and AI
+pytorch.org
+huggingface.co
+www.tensorflow.org
+
+# Science, statistics and medicine
+www.nature.com
+journals.plos.org
+www.cdc.gov
+www.who.int
+www.nih.gov
+
+# Business, finance and product
+www.sec.gov
+hbr.org
+www.atlassian.com
+www.intercom.com
+
+# News and tech press
+techcrunch.com
+www.theverge.com
+arstechnica.com

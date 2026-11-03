@@ -1,0 +1,13 @@
+<!doctype html>
+<meta charset="utf-8" />
+<title>Long reference</title>
+<!-- A long reference page, built on load: 3000 paragraphs, each with
+     acronyms. The scan must stay quick and the mark cap must hold. -->
+<body style="font: 16px/1.5 Georgia, serif; margin: 24px">
+  <script>
+    const words = ['API', 'HTTPS', 'JSON', 'CDN', 'SDK', 'TLS', 'DNS', 'SSO'];
+    const out = [];
+    for (let i = 0; i < 3000; i++) out.push(`<p>Row ${i}: the ${words[i % 8]} and the ${words[(i + 3) % 8]} work with the ${words[(i + 5) % 8]}.</p>`);
+    document.body.insertAdjacentHTML('beforeend', out.join(''));
+  </script>
+</body>

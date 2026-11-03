@@ -1,0 +1,15 @@
+<!doctype html>
+<meta charset="utf-8" />
+<title>Frames</title>
+<!-- Docs sites embed other docs: a same-origin frame, a srcdoc frame and a
+     cross-origin frame (the second server, its port in ?x=). -->
+<body style="font: 16px/1.5 Georgia, serif; margin: 24px">
+  <p id="top">The parent page mentions the REST API.</p>
+  <iframe id="same" src="frame-child.html" style="width: 600px; height: 90px; border: 1px solid #ccc"></iframe>
+  <iframe id="srcdoc" srcdoc="<p style='font: 16px Georgia'>A srcdoc frame about the CDN.</p>" style="width: 600px; height: 70px; border: 1px solid #ccc"></iframe>
+  <iframe id="cross" style="width: 600px; height: 90px; border: 1px solid #ccc"></iframe>
+  <script>
+    const x = new URLSearchParams(location.search).get('x');
+    if (x) document.getElementById('cross').src = `http://127.0.0.1:${x}/frame-child.html`;
+  </script>
+</body>

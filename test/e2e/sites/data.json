@@ -1,0 +1,1 @@
+{ "name": "payments", "description": "Every request to the REST API goes over HTTPS." }

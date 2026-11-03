@@ -80,7 +80,11 @@ See the code comments in `src/content.js` for the detail. In short:
   bubble load from `dist/bubble.js` the first time a bubble opens, inside a
   shadow root, so the page's CSS and the bubble's CSS never meet. If that
   bundle fails to load, a plain bubble with the same words shows instead.
-- **Skipped text:** `code`, `pre`, form fields, editable regions, SVG.
+- **Skipped text:** `code`, `pre`, form fields, editable regions, SVG. A
+  plain-text file (.txt, a raw .md, JSON) is one `pre` in the page Chrome
+  builds for it, so there the `pre` is read.
+- **Frames:** it runs in every frame, same-origin, cross-origin and
+  `srcdoc`, and a bubble closes when the pointer leaves its frame.
 - **Late text:** a MutationObserver scans what a page adds after load.
 
 ## Design
@@ -116,10 +120,60 @@ npm run icons      # rewrite icons/*.png
 npm run zip        # a store-ready zip
 ```
 
+## Testing
+
+Three layers, as in Unit Bubble. All of them run headless; `HEADED=1` (e2e)
+or `--headed` (scan) shows the browser.
+
+1. **Rules, no browser.** `npm test` runs `test/find.test.js`: tokens,
+   page definitions, plurals, shouting, the model's answer checks, and the
+   dictionary's shape.
+2. **End to end, local pages.** `npm run e2e` runs `test/e2e/run.js`: the
+   real extension in Chromium against `test/e2e/sites/`, served with each
+   file's real content type. Cases cover docs, settings, light and dark,
+   the popup, rendered and raw Markdown, frames, shadow roots, a single-page
+   app, editors, a strict CSP and a 3000-paragraph page. `npm run e2e --
+   --only frames` runs the cases whose name contains "frames".
+3. **Real sites.** The scanner in `tools/scan/`:
+   - `npm run scan:discover` reads the sitemaps of the domains in
+     `sites.txt` (docs, security, ML, science, medicine, business, news)
+     and writes `urls.txt`.
+   - `npm run scan` fetches every URL in `urls.txt` and `files.txt` without
+     a browser and runs the extension's rules on the text. It reports how
+     many acronyms are explained, which are ambiguous, and the most common
+     unknown ones: the list to grow the dictionary from.
+   - `npm run scan:browser -- --limit 25` loads the real extension on a
+     sample and checks rules that must hold on any page: no element of ours
+     in the page's text, no underline in code or a field, underlines where
+     there are known acronyms, a bubble that opens on the first visible
+     underline and stays in the window, and no errors of ours.
+
+`files.txt` holds one fixed URL for each format and field: ambiguous
+acronyms on Wikipedia, HTML specs, rendered and raw Markdown, an RFC as
+plain text, JSON and a PDF.
+
+### Format support
+
+The e2e run ends with this matrix, and a format that starts or stops
+working fails until its expectation changes.
+
+| Format | Bubble | |
+| --- | --- | --- |
+| HTML page | Yes | |
+| Rendered Markdown (GitHub, docs sites) | Yes | Code spans and fenced code are skipped. |
+| Raw Markdown, plain text, JSON | Yes | |
+| Local file (`file://`) | Yes | Unpacked. A store install needs **Allow access to file URLs** on the extension's card. |
+| XML | No | Chrome's XML tree viewer has no page body. |
+| SVG | No | Drawn text, not page text. |
+| PDF | No | Chrome's PDF viewer runs no content scripts. |
+
 ## Known limits
 
 - **Images and canvas** are not read. Text only.
-- **Web components with closed shadow roots** hide their text from the hover.
+- **Text inside shadow roots**, open or closed, is not read.
+- **PDFs** get no bubble: Chrome's PDF viewer runs no content scripts.
+  Supporting them means opening PDFs in a viewer of our own.
+- **XML and SVG files** get no bubble.
 - **Context needs the model.** Without Chrome's on-device model (it needs
   a capable device and about 22 GB of free disk), an ambiguous acronym
   shows the tech meaning first and the others under *Also*.
