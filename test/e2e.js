@@ -201,11 +201,17 @@ async function away(page) {
   // The popup renders.
   const popup = await context.newPage();
   const id = new URL(worker.url()).host;
-  await popup.setViewportSize({ width: 300, height: 380 });
+  await popup.setViewportSize({ width: 268, height: 400 });
   await popup.goto(`chrome-extension://${id}/src/popup/popup.html`);
   await popup.waitForTimeout(500);
-  ok('popup renders its controls', (await popup.locator('button[aria-pressed]').count()) >= 7);
+  ok('popup renders its choices', (await popup.locator('button[aria-pressed]').count()) === 5);
+  // On, and Meaning from context; This site hides on an extension page.
+  ok('popup renders its switches', (await popup.locator('.ab-switch input[type=checkbox]').count()) === 2);
   await popup.screenshot({ path: path.join(SHOTS, 'popup.png') });
+  await popup.emulateMedia({ colorScheme: 'dark' });
+  const popupBg = await popup.evaluate(() => getComputedStyle(document.body).backgroundColor);
+  ok('the popup is dark in dark mode', popupBg === 'rgb(28, 28, 30)', popupBg);
+  await popup.screenshot({ path: path.join(SHOTS, 'popup-dark.png') });
 
   ok('no page errors', errors.length === 0, errors.join('\n    '));
   await context.close();

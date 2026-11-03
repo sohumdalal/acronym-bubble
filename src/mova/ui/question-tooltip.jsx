@@ -1,6 +1,7 @@
 // Mova QuestionTooltip (YuiUiKit2), from @mova-ui/react 0.4.6 (MIT, see
-// LICENSE.mova). Re-skinned for Acronym Bubble: colour is the theme tokens
-// (ab-tip-* in mova.css) and the corners are square.
+// LICENSE.mova). Re-skinned for Acronym Bubble in Unit Bubble's look:
+// colour is the theme tokens (ab-tip-* in mova.css), a frosted card with
+// 10px corners, light on a light page and dark on a dark one.
 //
 // What changed beyond the skin:
 // - Mova's demo opens over its own help button. Here the trigger is the
@@ -11,17 +12,21 @@
 //   More link, so it wraps at 280px instead of nowrap.
 // - It takes the pointer, so the link can be clicked; Mova's is
 //   pointer-events-none.
+// - No arrow. On frosted glass it doubles the blur where it overlaps the
+//   card, and Unit Bubble's card has none.
+// - Where the meaning came from is a small blue pill.
 // - Its text can change while it is open, when the model's answer replaces
 //   the dictionary's, so it measures itself again then.
-// Its padding, border, text size, shadow, arrow and spring are Mova's.
+// Its spring and its placement over the word are Mova's.
 
 import { useLayoutEffect, useRef, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { ArrowUpRight } from 'lucide-react';
 
 const GUTTER = 8;
-const LIFT = 6; // Mova's y travel; the bubble rests this far off the word.
+const LIFT = 6; // Mova's y travel as the card springs in
 const SOURCE = { page: 'on this page', context: 'in context', guess: 'best guess' };
+const GAP = 8; // Unit Bubble's gap between the word and the card
 
 export function QuestionTooltip({ hit, theme = 'light', onEnter, onLeave, onMore }) {
   return (
@@ -39,9 +44,9 @@ function Bubble({ hit, theme, onEnter, onLeave, onMore }) {
 
   useLayoutEffect(() => {
     const { width, height } = box.current.getBoundingClientRect();
-    const below = rect.top - height - LIFT * 2 < GUTTER;
+    const below = rect.top - height - GAP < GUTTER;
     const left = Math.max(GUTTER, Math.min(center - width / 2, innerWidth - width - GUTTER));
-    setPlace({ below, left, top: below ? rect.bottom + 2 : rect.top - height - 2, arrow: center - left });
+    setPlace({ below, left, top: below ? rect.bottom + GAP - LIFT : rect.top - height - GAP + LIFT, origin: center - left });
   }, [rect.top, rect.bottom, center, hit.meanings.join('|')]);
 
   const dir = place && place.below ? -1 : 1;
@@ -63,15 +68,15 @@ function Bubble({ hit, theme, onEnter, onLeave, onMore }) {
         left: place ? place.left : 0,
         top: place ? place.top : 0,
         visibility: place ? 'visible' : 'hidden',
-        transformOrigin: place ? `${place.arrow}px ${place.below ? 0 : '100%'}` : undefined,
+        transformOrigin: place ? `${place.origin}px ${place.below ? 0 : '100%'}` : undefined,
       }}
-      className={`max-w-[280px] w-max px-3 py-1.5 border text-[11px] shadow-xl z-20 ${skin}`}
+      className={`max-w-[280px] w-max px-2.5 pt-[7px] pb-2 border text-[11.5px] z-20 ${skin}`}
     >
       <div className="flex items-center justify-between gap-4">
         <span className="flex items-center gap-1.5 min-w-0">
           <span className="w-1.5 h-1.5 shrink-0 ab-mark" />
-          <span className="font-semibold tracking-[1.1px]">{hit.term}</span>
-          {SOURCE[hit.source] && <span className="ab-soft truncate">{SOURCE[hit.source]}</span>}
+          <span className="font-semibold tracking-[0.4px] ab-soft">{hit.term}</span>
+          {SOURCE[hit.source] && <span className="px-1.5 text-[10px] font-medium leading-[16px] truncate ab-pill">{SOURCE[hit.source]}</span>}
         </span>
         <a
           href={hit.url}
@@ -85,14 +90,8 @@ function Bubble({ hit, theme, onEnter, onLeave, onMore }) {
           <ArrowUpRight className="w-3 h-3" strokeWidth={2} />
         </a>
       </div>
-      <div className="mt-0.5 text-[13px] leading-snug">{hit.meanings[0]}</div>
+      <div className="mt-1 text-[15px] font-medium leading-snug tracking-[-0.01em]">{hit.meanings[0]}</div>
       {alts.length > 0 && <div className="mt-0.5 leading-snug ab-soft">Also {alts.join(' · ')}</div>}
-      <div
-        style={place ? { left: place.arrow } : undefined}
-        className={`absolute -translate-x-1/2 w-2 h-2 rotate-45 ${
-          place && place.below ? '-top-1 border-l border-t' : '-bottom-1 border-r border-b'
-        } ${skin}`}
-      />
     </motion.div>
   );
 }

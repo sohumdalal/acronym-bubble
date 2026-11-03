@@ -287,21 +287,25 @@
     host.style.cssText = 'all:initial;position:fixed;z-index:2147483647;display:none;';
     const shadow = host.attachShadow({ mode: 'open' });
     shadow.innerHTML = `<style>
-      div{max-width:280px;padding:6px 12px;background:#181818;color:#fff;border:1px solid #303030;
-        font:400 13px/1.4 Inter,-apple-system,system-ui,sans-serif}
-      b{font-size:11px;font-weight:600;letter-spacing:1.1px} a{color:#fff;font-size:11px;margin-left:12px}
+      div{max-width:280px;padding:7px 10px 8px;border-radius:10px;background:rgba(255,255,255,.88);color:#0b0b0c;
+        border:1px solid rgba(0,0,0,.08);box-shadow:0 1px 2px rgba(0,0,0,.06),0 8px 24px -6px rgba(0,0,0,.22);
+        -webkit-backdrop-filter:saturate(180%) blur(14px);backdrop-filter:saturate(180%) blur(14px);
+        font:400 15px/1.4 FerrariSans,-apple-system,system-ui,sans-serif}
+      b{font-size:11.5px;font-weight:600;opacity:.55} a{color:#007aff;font-size:11.5px;margin-left:12px;text-decoration:none}
+      .dark{background:rgba(28,28,30,.86);color:#f5f5f7;border-color:rgba(255,255,255,.1)} .dark a{color:#0a84ff}
     </style><div><b></b><a target="_blank" rel="noopener noreferrer">More ↗</a><br><span></span></div>`;
     host.addEventListener('mouseenter', () => ((overBubble = true), clearTimeout(hideTimer)));
     host.addEventListener('mouseleave', () => ((overBubble = false), hideSoon()));
     document.documentElement.append(host);
     return {
-      show(view) {
+      show(view, theme) {
+        shadow.querySelector('div').className = theme;
         shadow.querySelector('b').textContent = view.term;
         shadow.querySelector('span').textContent = view.meanings.join(' · ');
         shadow.querySelector('a').href = view.url;
         host.style.display = 'block';
         host.style.left = `${Math.max(8, view.rect.left)}px`;
-        host.style.top = `${view.rect.bottom + 6}px`;
+        host.style.top = `${view.rect.bottom + 8}px`;
       },
       hide() {
         host.style.display = 'none';

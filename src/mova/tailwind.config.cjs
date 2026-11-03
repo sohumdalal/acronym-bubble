@@ -16,7 +16,7 @@ module.exports = {
   theme: {
     spacing,
     extend: {
-      fontFamily: { sans: ['Inter', '-apple-system', 'system-ui', 'sans-serif'] },
+      fontFamily: { sans: ['FerrariSans', '-apple-system', 'system-ui', 'sans-serif'] },
     },
   },
 };

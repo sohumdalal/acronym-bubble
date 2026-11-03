@@ -85,22 +85,23 @@ See the code comments in `src/content.js` for the detail. In short:
 
 ## Design
 
-The design system is [Mova](https://mova-ui.com), skinned with a little
-Ferrari, as for every app in this folder (see `../AGENTS.md`).
+The components are [Mova](https://mova-ui.com)'s, as for every app in this
+folder (see `../AGENTS.md`). The skin is not the shared Ferrari one: it is
+[Unit Bubble](../unit-bubble)'s, so the two extensions look like a pair.
 
-- The bubble is Mova's `QuestionTooltip` and the popup's controls are Mova's
+- The bubble is Mova's `QuestionTooltip` and the popup's choices are Mova's
   `SegmentedABTabs`, both from `@mova-ui/react` 0.4.6 (MIT), vendored in
-  `src/mova/ui/`. Each file's header says what changed: the skin, square
-  corners, props for the demo data, and placement over a word on someone
-  else's page.
-- The tokens come from the shared Ferrari file, linked here as `DESIGN.md`,
-  and live in one place, `src/mova/mova.css`: the palette, Inter, sharp
-  corners and hairlines, and Rosso Corsa for the one small mark on the
-  bubble.
-- The bubble is dark on both light and dark pages, as Mova's tooltip is:
-  near-black on a light page, lifted grey on a dark one. The extension reads
-  the background behind the word to choose. The popup follows the system's
-  light or dark setting.
+  `src/mova/ui/`. Each file's header says what changed: the skin, props for
+  the demo data, and placement over a word on someone else's page. The
+  popup's on and off switches are Unit Bubble's iOS switch.
+- The tokens are Unit Bubble's (`../unit-bubble/src/ui.css`) and live in one
+  place, `src/mova/mova.css`: the system type stack, Apple's blue, 10px
+  corners and a frosted card. Where a meaning came from (*on this page*,
+  *in context*, *best guess*) is a small blue pill.
+- Light and dark are both designed. The bubble is white glass on a light
+  page and graphite glass on a dark one; the extension reads the background
+  behind the word to choose. The popup follows the system's light or dark
+  setting.
 - Spacing is in pixels, not rem, because a page's root font size is not
   ours to trust.
 

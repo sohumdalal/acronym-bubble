@@ -1,5 +1,7 @@
 // The toolbar popup: on and off, everywhere and for this site, and the two
-// choices about how loud the extension is on a page.
+// choices about how loud the extension is on a page. It is drawn like Unit
+// Bubble's popup: its switches for on and off, Mova's segmented control for
+// the choices.
 import { useEffect, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import { MotionConfig } from 'framer-motion';
@@ -17,16 +19,22 @@ const MODEL = {
 // Chrome's on-device model: 'available', 'downloadable', 'downloading' or
 // 'unavailable'.
 const modelStatus = () => (typeof LanguageModel === 'undefined' ? Promise.resolve('unavailable') : LanguageModel.availability(LM).catch(() => 'unavailable'));
-const ON_OFF = [
-  { value: true, label: 'On' },
-  { value: false, label: 'Off' },
-];
+
+// Unit Bubble's iOS switch (../unit-bubble/src/ui.css), as ab-switch.
+function Switch({ label, checked, onChange }) {
+  return (
+    <label className="ab-switch">
+      <input type="checkbox" aria-label={label} checked={checked} onChange={(e) => onChange(e.target.checked)} />
+      <span className="ab-switch-track" />
+    </label>
+  );
+}
 
 function Row({ title, note, children }) {
   return (
     <div className="flex items-center justify-between gap-4">
       <div className="min-w-0">
-        <div className="text-[13px] font-medium">{title}</div>
+        <div className="text-[13px] font-medium tracking-[-0.01em]">{title}</div>
         {note && <div className="text-[11px] ab-soft truncate">{note}</div>}
       </div>
       {children}
@@ -73,16 +81,19 @@ function Popup() {
   };
 
   return (
-    <div className="flex flex-col gap-4 p-4">
-      <Row title={<span className="flex items-center gap-2 whitespace-nowrap"><span className="w-2 h-2 ab-mark" />Acronym Bubble</span>}>
-        <SegmentedTabs id="enabled" label="Acronym Bubble" options={ON_OFF} value={settings.enabled} onChange={(v) => save({ enabled: v })} />
+    <div className="flex flex-col gap-3 p-3.5">
+      <Row title={<span className="flex items-center gap-2.5 whitespace-nowrap"><span className="w-[18px] h-[18px] ab-mark" />Acronym Bubble</span>}>
+        <Switch label="Acronym Bubble" checked={settings.enabled} onChange={(v) => save({ enabled: v })} />
       </Row>
       <div className="h-px ab-rule" />
       <Row title="This site" note={site || 'Not available on this page'}>
-        {site && <SegmentedTabs id="site" label="This site" options={ON_OFF} value={siteOn} onChange={setSiteOn} />}
+        {site && <Switch label="This site" checked={siteOn} onChange={setSiteOn} />}
       </Row>
-      <div className="flex flex-col gap-2">
-        <div className="text-[13px] font-medium">Underline</div>
+      <Row title="Meaning from context" note={model && MODEL[model]}>
+        <Switch label="Meaning from context" checked={settings.context} onChange={setContext} />
+      </Row>
+      <div className="flex flex-col gap-1.5">
+        <div className="text-[11px] ab-soft">Underline</div>
         <SegmentedTabs
           id="underline"
           label="Underline"
@@ -95,8 +106,8 @@ function Popup() {
           onChange={(v) => save({ underline: v })}
         />
       </div>
-      <div className="flex flex-col gap-2">
-        <div className="text-[13px] font-medium">Open on</div>
+      <div className="flex flex-col gap-1.5">
+        <div className="text-[11px] ab-soft">Open on</div>
         <SegmentedTabs
           id="trigger"
           label="Open on"
@@ -108,9 +119,6 @@ function Popup() {
           onChange={(v) => save({ trigger: v })}
         />
       </div>
-      <Row title="Meaning from context" note={model && MODEL[model]}>
-        <SegmentedTabs id="context" label="Meaning from context" options={ON_OFF} value={settings.context} onChange={setContext} />
-      </Row>
       <div className="h-px ab-rule" />
       <div className="text-[11px] ab-soft">⌥⇧A turns it on or off. Hover an underlined word to see it.</div>
     </div>
