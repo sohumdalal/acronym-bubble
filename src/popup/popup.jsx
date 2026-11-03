@@ -82,7 +82,7 @@ function Popup() {
 
   return (
     <div className="flex flex-col gap-3 p-3.5">
-      <Row title={<span className="flex items-center gap-2.5 whitespace-nowrap"><span className="w-[18px] h-[18px] ab-mark" />Acronym Bubble</span>}>
+      <Row title={<span className="flex items-center gap-2.5 whitespace-nowrap"><span aria-hidden="true" className="flex items-center justify-center w-[18px] h-[18px] text-[8.5px] font-bold leading-none tracking-[-0.01em] text-white ab-mark">ab</span>Acronym Bubble</span>}>
         <Switch label="Acronym Bubble" checked={settings.enabled} onChange={(v) => save({ enabled: v })} />
       </Row>
       <div className="h-px ab-rule" />

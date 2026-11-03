@@ -1,71 +1,53 @@
-// Writes icons/{16,32,48,128}.png: a white square speech bubble with its
-// arrow, on a near-black tile, with a Rosso Corsa mark. Plain node, no deps.
-const zlib = require('zlib');
+// Writes icons/{16,32,48,128}.png: Unit Bubble's blue dot, with "ab" in
+// white in the middle. The type is the extension's own stack (FerrariSans,
+// then the system face), drawn by a headless Chromium canvas, because plain
+// node cannot draw text. Each size is drawn at its own size, not scaled down,
+// so the small ones stay crisp. No window opens.
 const fs = require('fs');
 const path = require('path');
+const { chromium } = require('playwright');
 
-const SS = 4; // supersample factor
-const CANVAS = [24, 24, 24];
-const INK = [255, 255, 255];
-const RED = [218, 41, 28];
+const FONT = "'FerrariSans', -apple-system, system-ui, sans-serif";
 
-function crc(buf) {
-  let c = ~0;
-  for (const b of buf) {
-    c ^= b;
-    for (let i = 0; i < 8; i++) c = (c >>> 1) ^ (0xedb88320 & -(c & 1));
+// Runs in the page. Returns a PNG data URL.
+function draw({ size, font }) {
+  const c = document.createElement('canvas');
+  c.width = c.height = size;
+  const ctx = c.getContext('2d');
+
+  // Unit Bubble's dot: #0a84ff at the top left easing into #007aff.
+  const fill = ctx.createLinearGradient(0, 0, size * 0.4, size * 0.6);
+  fill.addColorStop(0, '#0a84ff');
+  fill.addColorStop(1, '#007aff');
+  ctx.fillStyle = fill;
+  ctx.beginPath();
+  ctx.arc(size / 2, size / 2, size / 2, 0, Math.PI * 2);
+  ctx.fill();
+
+  // "ab", its ink box centred in the dot and about 56% of its width.
+  // Heavier at small sizes, where 600 breaks up.
+  const weight = size <= 16 ? 700 : 600;
+  ctx.letterSpacing = `${-0.01 * size}px`;
+  ctx.font = `${weight} 100px ${font}`;
+  const probe = ctx.measureText('ab');
+  const px = (100 * size * 0.56) / (probe.actualBoundingBoxLeft + probe.actualBoundingBoxRight);
+  ctx.font = `${weight} ${px}px ${font}`;
+  const m = ctx.measureText('ab');
+  const w = m.actualBoundingBoxLeft + m.actualBoundingBoxRight;
+  const h = m.actualBoundingBoxAscent + m.actualBoundingBoxDescent;
+  ctx.fillStyle = '#ffffff';
+  ctx.fillText('ab', (size - w) / 2 + m.actualBoundingBoxLeft, (size - h) / 2 + m.actualBoundingBoxAscent);
+  return c.toDataURL('image/png');
+}
+
+(async () => {
+  const browser = await chromium.launch();
+  const page = await browser.newPage();
+  const dir = path.join(__dirname, '..', 'icons');
+  for (const size of [16, 32, 48, 128]) {
+    const url = await page.evaluate(draw, { size, font: FONT });
+    fs.writeFileSync(path.join(dir, `${size}.png`), Buffer.from(url.split(',')[1], 'base64'));
   }
-  return ~c >>> 0;
-}
-function chunk(type, data) {
-  const len = Buffer.alloc(4);
-  len.writeUInt32BE(data.length);
-  const t = Buffer.from(type, 'ascii');
-  const c = Buffer.alloc(4);
-  c.writeUInt32BE(crc(Buffer.concat([t, data])));
-  return Buffer.concat([len, t, data, c]);
-}
-function png(w, h, rgba) {
-  const ihdr = Buffer.alloc(13);
-  ihdr.writeUInt32BE(w, 0);
-  ihdr.writeUInt32BE(h, 4);
-  ihdr[8] = 8;
-  ihdr[9] = 6;
-  const raw = Buffer.alloc((w * 4 + 1) * h);
-  for (let y = 0; y < h; y++) rgba.copy(raw, y * (w * 4 + 1) + 1, y * w * 4, (y + 1) * w * 4);
-  return Buffer.concat([Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]), chunk('IHDR', ihdr), chunk('IDAT', zlib.deflateSync(raw, { level: 9 })), chunk('IEND', Buffer.alloc(0))]);
-}
-
-// The colour at (u, v) in a unit square.
-function paint(u, v) {
-  const bubble = u >= 0.16 && u <= 0.84 && v >= 0.18 && v <= 0.66;
-  // The arrow under the bubble, a right-angled notch on the left third.
-  const arrow = v > 0.66 && v <= 0.84 && u >= 0.3 && u <= 0.3 + (0.84 - v);
-  const mark = u >= 0.28 && u <= 0.42 && v >= 0.35 && v <= 0.49;
-  if (mark) return RED;
-  if (bubble || arrow) return INK;
-  return CANVAS;
-}
-
-function render(size) {
-  const out = Buffer.alloc(size * size * 4);
-  for (let y = 0; y < size; y++) {
-    for (let x = 0; x < size; x++) {
-      const sum = [0, 0, 0];
-      for (let dy = 0; dy < SS; dy++) {
-        for (let dx = 0; dx < SS; dx++) {
-          const c = paint((x + (dx + 0.5) / SS) / size, (y + (dy + 0.5) / SS) / size);
-          for (let k = 0; k < 3; k++) sum[k] += c[k];
-        }
-      }
-      const i = (y * size + x) * 4;
-      for (let k = 0; k < 3; k++) out[i + k] = Math.round(sum[k] / (SS * SS));
-      out[i + 3] = 255;
-    }
-  }
-  return png(size, size, out);
-}
-
-const dir = path.join(__dirname, '..', 'icons');
-for (const s of [16, 32, 48, 128]) fs.writeFileSync(path.join(dir, `${s}.png`), render(s));
-console.log('icons written');
+  await browser.close();
+  console.log('icons written');
+})();
