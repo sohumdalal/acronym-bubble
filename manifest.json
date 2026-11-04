@@ -2,7 +2,7 @@
   "manifest_version": 3,
   "name": "Acronym Bubble",
   "version": "0.1.0",
-  "description": "Hover an acronym on any page to see what it stands for, with a search link for more.",
+  "description": "Rest the pointer on any abbreviation to see what it stands for in that text: API, TL;DR, e.g., imo. On web pages and PDFs.",
   "minimum_chrome_version": "128",
   "permissions": ["storage", "webRequest", "webNavigation"],
   "host_permissions": ["<all_urls>"],

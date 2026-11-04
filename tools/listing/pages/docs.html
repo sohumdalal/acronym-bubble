@@ -1,0 +1,32 @@
+<!doctype html>
+<meta charset="utf-8" />
+<title>Authentication · Lumen Pay docs</title>
+<!-- A fictional product's API docs, for the store screenshots. -->
+<style>
+  * { box-sizing: border-box; }
+  body { margin: 0; font: 16px/1.65 -apple-system, system-ui, sans-serif; color: #1f2328; background: #fff; }
+  header { height: 56px; display: flex; align-items: center; gap: 10px; padding: 0 28px; border-bottom: 1px solid #e6e8eb; font-weight: 600; }
+  header i { width: 22px; height: 22px; border-radius: 6px; background: linear-gradient(135deg, #7c5cff, #3b82f6); }
+  .wrap { display: grid; grid-template-columns: 240px 1fr; }
+  nav { padding: 28px; border-right: 1px solid #e6e8eb; min-height: 744px; font-size: 14px; color: #59636e; line-height: 2.2; }
+  nav b { color: #1f2328; display: block; margin-top: 8px; }
+  nav .on { color: #3b5bdb; font-weight: 600; }
+  main { padding: 36px 56px; max-width: 820px; }
+  h1 { font-size: 34px; margin: 0 0 8px; letter-spacing: -0.02em; }
+  .lead { color: #59636e; font-size: 18px; margin: 0 0 28px; }
+  h2 { font-size: 20px; margin: 32px 0 8px; }
+  code { font: 14px ui-monospace, Menlo, monospace; background: #f3f4f6; padding: 2px 6px; border-radius: 6px; }
+  .note { border-left: 3px solid #3b82f6; background: #f5f8ff; padding: 12px 16px; border-radius: 0 8px 8px 0; color: #374151; }
+</style>
+<header><i></i>Lumen Pay</header>
+<div class="wrap">
+  <nav><b>Get started</b>Quickstart<br /><span class="on">Authentication</span><br />Webhooks<br /><b>Reference</b>Payments<br />Refunds<br />Errors</nav>
+  <main>
+    <h1>Authentication</h1>
+    <p class="lead">Every call to the REST API needs a token.</p>
+    <p id="p1">Send each request over HTTPS with a JWT in the <code>Authorization</code> header. Your IdP issues the token after SSO, and it expires after one hour.</p>
+    <h2>Service accounts</h2>
+    <p id="p2">Back-end jobs use a service account instead of SSO. Keep its key in your secrets manager, and rotate it at least every 90 days to stay inside our SLA.</p>
+    <p class="note">Tokens are cached at the CDN edge for 60 seconds. Revoke one from the dashboard to clear it at once.</p>
+  </main>
+</div>

@@ -19,11 +19,11 @@ const HEADERS = {
   'csp.html': { 'content-security-policy': "default-src 'none'" },
 };
 
-function listen() {
+function listen(dir) {
   const server = http.createServer((req, res) => {
     const name = path.basename(new URL(req.url, 'http://x').pathname);
     // An app's pushState URL (/spa/next) reloads as the app itself.
-    const file = path.join(SITES, req.url.startsWith('/spa/') ? 'spa.html' : name || 'docs.html');
+    const file = path.join(dir, req.url.startsWith('/spa/') ? 'spa.html' : name || 'docs.html');
     if (!fs.existsSync(file)) return res.writeHead(404).end();
     const type = TYPES[path.extname(file)] || 'application/octet-stream';
     res.writeHead(200, { 'content-type': type, ...(HEADERS[path.basename(file)] || {}) }).end(fs.readFileSync(file));
@@ -31,8 +31,8 @@ function listen() {
   return new Promise((resolve) => server.listen(0, '127.0.0.1', () => resolve(server)));
 }
 
-async function serve() {
-  const [a, b] = await Promise.all([listen(), listen()]);
+async function serve(dir = SITES) {
+  const [a, b] = await Promise.all([listen(dir), listen(dir)]);
   return {
     port: a.address().port,
     other: b.address().port,

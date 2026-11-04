@@ -36,16 +36,16 @@ const LEXICON = {
   WSS: ['Webhook Secret Store Value'],
 };
 
-function find(text) {
+function find(text, lexicon) {
   const out = [];
-  for (const [term, [stands_for, gloss = '']] of Object.entries(LEXICON)) {
+  for (const [term, [stands_for, gloss = '']] of Object.entries(lexicon)) {
     const esc = term.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
     if (new RegExp(`(?<![A-Za-z0-9&])${esc}s?(?![A-Za-z0-9&])`).test(text)) out.push({ term, stands_for, gloss });
   }
   return out;
 }
 
-function fakeClaude({ delay = 300 } = {}) {
+function fakeClaude({ delay = 300, lexicon = LEXICON } = {}) {
   const requests = [];
   let wait = delay;
   const server = http.createServer((req, res) => {
@@ -66,7 +66,7 @@ function fakeClaude({ delay = 300 } = {}) {
         type: 'message',
         role: 'assistant',
         model: json.model,
-        content: [{ type: 'text', text: JSON.stringify({ abbreviations: find(text) }) }],
+        content: [{ type: 'text', text: JSON.stringify({ abbreviations: find(text, lexicon) }) }],
         stop_reason: 'end_turn',
         stop_sequence: null,
         usage: { input_tokens: 10, output_tokens: 10 },

@@ -1,0 +1,71 @@
+%PDF-1.4
+1 0 obj
+<< /Type /Catalog /Pages 2 0 R >>
+endobj
+2 0 obj
+<< /Type /Pages /Kids [3 0 R] /Count 1 >>
+endobj
+3 0 obj
+<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Contents 4 0 R /Resources << /Font << /F1 5 0 R /F2 6 0 R >> >> >>
+endobj
+4 0 obj
+<< /Length 711 >>
+stream
+BT
+72 720 Td
+/F2 20 Tf
+(Sleep and recall in older adults) Tj
+0 -38 Td
+/F1 11 Tf
+(A randomized controlled trial \(RCT\) of 240 adults aged 65 to 80) Tj
+0 -21 Td
+/F1 12 Tf
+() Tj
+0 -23 Td
+/F2 13 Tf
+(Results) Tj
+0 -25 Td
+/F1 12 Tf
+(Recall improved by 4.2 points in the sleep group \(95% CI 2.1 to 6.3\).) Tj
+0 -23 Td
+/F1 12 Tf
+(The control group changed by 0.6 points \(SD 3.9\).) Tj
+0 -23 Td
+/F1 12 Tf
+(An ANOVA found no effect of age band on the size of the change.) Tj
+0 -23 Td
+/F1 12 Tf
+() Tj
+0 -23 Td
+/F2 13 Tf
+(Discussion) Tj
+0 -25 Td
+/F1 12 Tf
+(The CI excludes zero, so the effect is unlikely to be chance alone.) Tj
+0 -23 Td
+/F1 12 Tf
+(A longer follow-up would show whether the effect lasts.) Tj
+0 -23 Td
+ET
+endstream
+endobj
+5 0 obj
+<< /Type /Font /Subtype /Type1 /BaseFont /Times-Roman >>
+endobj
+6 0 obj
+<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica-Bold >>
+endobj
+xref
+0 7
+0000000000 65535 f 
+0000000009 00000 n 
+0000000058 00000 n 
+0000000115 00000 n 
+0000000251 00000 n 
+0000001013 00000 n 
+0000001085 00000 n 
+trailer
+<< /Size 7 /Root 1 0 R >>
+startxref
+1160
+%%EOF

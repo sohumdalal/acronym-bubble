@@ -7,6 +7,7 @@
     "build": "rm -rf dist && bun build src/mova/bubble.jsx src/popup/popup.jsx src/pdf/viewer.js --outdir dist --splitting --format esm --production --entry-naming '[name].[ext]' --chunk-naming 'chunk-[hash].[ext]' && bun build src/background.js --outfile dist/background.js --format esm --target browser --production && tailwindcss -c src/mova/tailwind.config.cjs -i src/mova/mova.css -o dist/mova.css --minify && cp src/mova/LICENSE.mova dist/ && bun run pdfjs",
     "pdfjs": "P=node_modules/pdfjs-dist && cp $P/build/pdf.worker.min.mjs dist/pdf.worker.mjs && cp $P/web/pdf_viewer.css dist/ && cp -R $P/web/images dist/images && mkdir -p dist/pdfjs && cp -R $P/cmaps $P/standard_fonts dist/pdfjs/ && cp $P/LICENSE dist/LICENSE.pdfjs",
     "icons": "node tools/make-icons.js",
+    "shots": "node tools/listing/screenshots.js",
     "test": "node test/find.test.js",
     "e2e": "node test/e2e/run.js",
     "scan:discover": "node tools/scan/discover.js",
