@@ -1,14 +1,15 @@
 # Acronym Bubble
 
-A Chrome extension for reading docs and tech sites that assume you know every
-acronym.
+A Chrome extension for reading docs, papers and chat threads that assume you
+know every abbreviation.
 
-Rest the pointer on an acronym and a small bubble says what it stands for:
-`API · Application Programming Interface`. **More ↗** opens a Google search
-for it in a new tab. Move away and it goes.
+Rest the pointer on an abbreviation and a small bubble says what it stands
+for, in this text: `API · Application Programming Interface`, `TL;DR · Too
+Long; Didn't Read`, `e.g. · exempli gratia, for example`. **More ↗** opens a
+Google search for it in a new tab. Move away and it goes.
 
-Known acronyms carry a faint dotted underline, so you can see which words
-have a bubble. Nothing else on the page changes.
+Abbreviations it has read carry a faint dotted underline, so you can see
+which words have a bubble. Nothing else on the page changes.
 
 ## Install
 
@@ -35,38 +36,47 @@ Click the toolbar icon.
 | This site | On | Off for the current site only. |
 | Underline | Every | Every use, the first use of each acronym, or none. Hover works either way. |
 | Open on | Hover | `⌥ + Hover` opens a bubble only while you hold Option (Alt). |
-| Meaning from context | On | Chrome's on-device model picks the meaning that fits the text. Turning it on starts the model download if Chrome does not have it yet. |
+| Model | On-device | Which model reads the page: Chrome's built-in model, or Claude with your own Anthropic API key. See below. |
 | Open PDFs here | On | PDFs open in Acronym Bubble's own viewer, so they get bubbles too. Off leaves them to Chrome. |
 
 ## Where meanings come from
 
-In this order:
+There is no dictionary and no word list in the extension. Meanings come from:
 
 1. **The page itself.** A page that writes `Customer Data Platform (CDP)`,
    `CDP (Customer Data Platform)` or `<abbr title="…">CDP</abbr>` gets its own
-   meaning, marked *on this page*. This is how in-house acronyms work.
-2. **The bundled dictionary**, `src/dict.js`: about 800 acronyms from
-   software, cloud, security, networking, data and AI, and the business terms
-   that show up in tech docs. Where an acronym has more than one common
-   meaning, the bubble lists the others under *Also*.
+   meaning at once, marked *on this page*. This needs no model.
+2. **The agent** (`src/agent/agent.js`), which reads the page's text in
+   pieces of about 3,000 characters when the page is idle, up to 30,000
+   characters a page. It says which abbreviations are there and what each
+   one stands for in this text, marked *in context*: `CI` is Continuous
+   Integration in a build log and Confidence Interval in a statistics paper.
+   It finds every kind: capitals (`API`, `SaaS`), dots and semicolons
+   (`e.g.`, `TL;DR`, `Ph.D.`) and lowercase chat forms (`imo`, `lgtm`).
+   Further down a long page, or for text added later, resting on a word
+   shaped like an abbreviation opens a bubble with a spinner until the agent
+   has read the text around it.
 
-3. **The text around it**, read by Chrome's on-device model (Gemini Nano,
-   through the [Prompt API](https://developer.chrome.com/docs/ai/prompt-api)).
-   For an acronym with more than one meaning, the bubble opens with the
-   dictionary's first meaning and switches to the one that fits, marked
-   *in context*: `CI` is Continuous Integration in a build log and Confidence
-   Interval in a psychology paper. For an all-caps acronym the dictionary does
-   not have, the bubble opens once the model answers, marked *best guess*. A
-   new meaning is used only if its words spell the acronym. The model runs on
-   the device, so this sends nothing anywhere either. Without the model, the
-   dictionary order stands.
+Every answer is checked before it is shown: the words it says the letters
+stand for must spell them (`Representational State Transfer` spells REST),
+be two words or more, and the term must really be in the text. That drops
+made-up answers and ordinary words.
 
-Plurals fall back to the singular (`APIs` is `API`). An acronym that is also
-an English word (`IT`, `US`, `OR`) is skipped inside all-caps text, where it
-is just a word.
+### The two models
 
-Nothing leaves the browser. There are no network requests except the search
-you click, and, for a PDF, the viewer loading that same PDF again.
+| Model | Where the text goes | Needs |
+| --- | --- | --- |
+| **On-device** (default) | Nowhere. Chrome's built-in model (Gemini Nano, through the [Prompt API](https://developer.chrome.com/docs/ai/prompt-api)) runs on this computer. | A computer that can run it. The popup offers the download if Chrome does not have it yet. |
+| **Claude** | To Anthropic. Claude Haiku 5.5 (`claude-haiku-5-5`) reads the text through the Anthropic API. | Your own [Anthropic API key](https://platform.claude.com/), pasted in the popup. It stays in this browser's local storage and is not synced. You pay Anthropic for what it reads, at Haiku's rates. |
+
+Without either, abbreviations the page does not define get no bubble.
+
+Plurals fall back to the singular (`APIs` is `API`). Text written mostly in
+capitals is skipped, since every word there is in capitals.
+
+With the on-device model, nothing leaves the browser except the search you
+click and, for a PDF, the viewer loading that same PDF again. With Claude,
+the page text the agent reads also goes to Anthropic.
 
 ## How it works
 
@@ -111,7 +121,10 @@ folder (see `../AGENTS.md`). The skin is not the shared Ferrari one: it is
 - The tokens are Unit Bubble's (`../unit-bubble/src/ui.css`) and live in one
   place, `src/mova/mova.css`: the system type stack, Apple's blue, 10px
   corners and a frosted card. Where a meaning came from (*on this page*,
-  *in context*, *best guess*) is a small blue pill.
+  *in context*) is a small blue pill.
+- While the agent reads, the bubble shows Mova's `AppleRadialSpinner`, and
+  the popup's Claude key field is Mova's password-toggle field, both
+  vendored in `src/mova/ui/` the same way.
 - Light and dark are both designed. The bubble is white glass on a light
   page and graphite glass on a dark one; the extension reads the background
   behind the word to choose. The popup follows the system's light or dark
@@ -123,9 +136,10 @@ folder (see `../AGENTS.md`). The skin is not the shared Ferrari one: it is
 
 ```bash
 bun run build      # dist/: the bubble, the popup, mova.css
-npm test           # detection rules and dictionary shape, no browser
+npm test           # detection rules and answer checks, no browser
 npm run e2e        # the real extension in Chromium; screenshots in test/shots/
 npm run check      # all three
+npm run check:zip  # the e2e suite against the unzipped store package
 npm run icons      # rewrite icons/*.png
 npm run zip        # a store-ready zip
 ```
@@ -135,27 +149,33 @@ npm run zip        # a store-ready zip
 Three layers, as in Unit Bubble. All of them run headless; `HEADED=1` (e2e)
 or `--headed` (scan) shows the browser.
 
-1. **Rules, no browser.** `npm test` runs `test/find.test.js`: tokens,
-   page definitions, plurals, shouting, the model's answer checks, and the
-   dictionary's shape.
+1. **Rules, no browser.** `npm test` runs `test/find.test.js`: shapes,
+   page definitions, plurals, shouting, the checks on every model answer,
+   and that the source holds no word lists.
 2. **End to end, local pages.** `npm run e2e` runs `test/e2e/run.js`: the
    real extension in Chromium against `test/e2e/sites/`, served with each
-   file's real content type. Cases cover docs, settings, light and dark,
-   the popup, rendered and raw Markdown, frames, shadow roots, a single-page
-   app, editors, a strict CSP and a 3000-paragraph page. `npm run e2e --
-   --only frames` runs the cases whose name contains "frames".
+   file's real content type. The test browser has no built-in model, so the
+   agent reads through its Claude path, pointed at a stand-in for the
+   Anthropic API (`test/e2e/lib/fake-claude.js`) that answers from a small
+   test lexicon: the real SDK calls run, with no key and no cost. Cases
+   cover the agent (spinner, chat forms, wrong answers dropped, no model, a
+   rejected key), docs, settings, light and dark, the popup, rendered and
+   raw Markdown, frames, shadow roots, a single-page app, editors, a strict
+   CSP and a 3000-paragraph page. `npm run e2e -- --only agent` runs the
+   cases whose name contains "agent".
 3. **Real sites.** The scanner in `tools/scan/`:
    - `npm run scan:discover` reads the sitemaps of the domains in
      `sites.txt` (docs, security, ML, science, medicine, business, news)
      and writes `urls.txt`.
    - `npm run scan` fetches every URL in `urls.txt` and `files.txt` without
      a browser and runs the extension's rules on the text. It reports how
-     many acronyms are explained, which are ambiguous, and the most common
-     unknown ones: the list to grow the dictionary from.
+     many words are shaped like abbreviations, how many the pages define
+     themselves, and the most common ones left for the agent. It does not
+     run the agent.
    - `npm run scan:browser -- --limit 25` loads the real extension on a
      sample and checks rules that must hold on any page: no element of ours
      in the page's text, no underline in code or a field, underlines where
-     there are known acronyms, a bubble that opens on the first visible
+     the page defines abbreviations, a bubble that opens on the first visible
      underline and stays in the window, and no errors of ours.
 
 `files.txt` holds one fixed URL for each format and field: ambiguous

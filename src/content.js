@@ -1,5 +1,14 @@
-// Finds acronyms on the page, underlines them faintly, and shows a bubble
-// with what one stands for when the pointer rests on it.
+// Finds abbreviations on the page, underlines them faintly, and shows a
+// bubble with what one stands for when the pointer rests on it.
+//
+// Meanings come from two places, and nothing in the extension lists them:
+// - the page itself: "Single Sign-On (SSO)" and <abbr title>, at once;
+// - the agent (src/agent/, run by the background worker), which reads the
+//   page's text in pieces when the page is idle and says which
+//   abbreviations it holds and what they stand for here. Its answers are
+//   underlined as they arrive.
+// Resting on something shaped like an abbreviation that the agent has not
+// read yet opens a bubble with a spinner, which fills in when it answers.
 //
 // The page's DOM is never changed. The underline is a CSS custom highlight
 // over Ranges, and the hover reads the word under the pointer with
@@ -7,13 +16,15 @@
 (() => {
   const AB = self.AB;
   const NAME = 'acronym-bubble';
-  const DEFAULTS = { enabled: true, disabledHosts: [], underline: 'every', trigger: 'hover', context: true, pdf: true };
+  const DEFAULTS = { enabled: true, disabledHosts: [], underline: 'every', trigger: 'hover', agent: 'device', pdf: true };
   const DELAY = 300; // pointer rest before a bubble opens
-  const SWAP = 120; // ...or before it moves to another acronym once open
+  const SWAP = 120; // ...or before it moves to another word once open
   const GRACE = 140; // time to cross from the word into the bubble
   const MAX_MARKS = 5000;
+  const CHUNK = 3000; // characters the agent reads at a time
+  const READ_MAX = 30000; // characters it reads from one page, at most
+  const CONTEXT = 600; // characters around a word it reads on its own
   const BLOCK = 'p,li,td,th,dd,dt,blockquote,figcaption,caption,h1,h2,h3,h4,h5,h6,section,article,main';
-  const CONTEXT = 600; // characters of text around the acronym that the model reads
   // Chrome shows a plain-text file (.txt, a raw .md, JSON) as one <pre> in a
   // page it builds. That <pre> is the document, not a code block.
   const TEXT_FILE = !/html|xml|svg/.test(document.contentType);
@@ -24,8 +35,11 @@
   const site = (pdfFile ? new URL(pdfFile, location.href).hostname : location.hostname).replace(/^www\./, '');
   let settings = { ...DEFAULTS };
   let on = false;
+  let agent = { ready: false }; // from the background worker: { agent, ready, reason }
 
-  const page = {}; // term -> meaning, from this page's own text
+  let page = {}; // term -> meaning, from this page's own text
+  let found = {}; // term -> { standsFor, gloss }, from the agent
+  let pattern = null; // finds every term in page and found
   const seen = new Set(); // terms underlined, for underline: 'first'
   const marks = new Highlight();
   let observer = null;
@@ -41,7 +55,7 @@
     if (root.nodeType === Node.TEXT_NODE) return allowed(root) ? [root] : [];
     const out = [];
     const walk = document.createTreeWalker(root, NodeFilter.SHOW_TEXT, {
-      acceptNode: (n) => (/[A-Z].*[A-Z]/s.test(n.nodeValue) && allowed(n) ? NodeFilter.FILTER_ACCEPT : NodeFilter.FILTER_REJECT),
+      acceptNode: (n) => (/[A-Za-z]{2}/.test(n.nodeValue) && allowed(n) ? NodeFilter.FILTER_ACCEPT : NodeFilter.FILTER_REJECT),
     });
     while (walk.nextNode()) out.push(walk.currentNode);
     return out;
@@ -49,25 +63,36 @@
 
   // The page's own definitions: "Single Sign-On (SSO)" and <abbr title>.
   function learn(root, nodes) {
-    const found = AB.definitions(nodes.map((n) => n.nodeValue).join(' '));
+    const defs = AB.definitions(nodes.map((n) => n.nodeValue).join(' '));
     if (root.querySelectorAll) {
       for (const abbr of root.querySelectorAll('abbr[title]')) {
         const term = abbr.textContent.trim();
-        if (/^[A-Za-z][A-Za-z0-9&]*$/.test(term) && abbr.title.trim()) found[term] = abbr.title.trim();
+        if (/^[A-Za-z][A-Za-z0-9&.;]*$/.test(term) && abbr.title.trim()) defs[term] = abbr.title.trim();
       }
     }
-    for (const [term, meaning] of Object.entries(found)) if (!page[term]) page[term] = meaning;
+    let changed = false;
+    for (const [term, meaning] of Object.entries(defs)) {
+      if (page[term]) continue;
+      page[term] = meaning;
+      changed = true;
+    }
+    if (changed) known();
+  }
+
+  function known() {
+    pattern = AB.termPattern([...Object.keys(page), ...Object.keys(found)]);
   }
 
   function mark(nodes) {
-    if (settings.underline === 'none') return;
+    if (settings.underline === 'none' || !pattern) return;
     for (const node of nodes) {
       const text = node.nodeValue;
-      AB.TOKEN.lastIndex = 0;
+      if (AB.shouty(text)) continue;
+      pattern.lastIndex = 0;
       let m;
-      while ((m = AB.TOKEN.exec(text))) {
+      while ((m = pattern.exec(text))) {
         if (marks.size >= MAX_MARKS) return;
-        const hit = AB.resolve(m[0], page, text);
+        const hit = AB.resolve(m[0], page, found);
         if (!hit) continue;
         if (settings.underline === 'first') {
           if (seen.has(hit.term)) continue;
@@ -81,10 +106,17 @@
     }
   }
 
+  function remark() {
+    marks.clear();
+    seen.clear();
+    mark(textNodes(document.body));
+  }
+
   function scan(root) {
     const nodes = textNodes(root);
     learn(root, nodes);
     mark(nodes);
+    queue(nodes);
   }
 
   // Pages that load more as you read: scan what was added, in one go.
@@ -104,6 +136,91 @@
     }, 400);
   }
 
+  // ── The agent reads the page ──────────────────────────────────────────
+
+  let waiting = []; // text nodes not yet sent
+  let budget = READ_MAX;
+  let sending = Promise.resolve();
+  let readOf = new WeakMap(); // text node -> the read that covers it
+  let finished = new WeakSet(); // text nodes the agent has read
+  let idle = 0;
+
+  function queue(nodes) {
+    if (!agent.ready || budget <= 0) return;
+    waiting.push(...nodes);
+    if (!idle) idle = requestIdleCallback(sendWaiting, { timeout: 1500 });
+  }
+
+  // Groups waiting text into pieces of about CHUNK characters and sends them
+  // one after another. Each node knows which piece covers it, so a hover can
+  // wait for that answer.
+  function sendWaiting() {
+    idle = 0;
+    while (waiting.length && budget > 0) {
+      const group = [];
+      let size = 0;
+      while (waiting.length && size < CHUNK) {
+        const node = waiting.shift();
+        if (!node.isConnected || readOf.has(node)) continue;
+        group.push(node);
+        size += node.nodeValue.length + 1;
+      }
+      if (!group.length) break;
+      budget -= size;
+      const text = group.map((n) => n.nodeValue.replace(/\s+/g, ' ').trim()).join('\n');
+      const read = (sending = sending.then(() => ask(text)));
+      for (const n of group) readOf.set(n, read);
+      (async () => {
+        await read;
+        for (const n of group) finished.add(n);
+      })();
+    }
+    waiting = [];
+  }
+
+  // The agent's answer for a piece of text. Every term it gives is checked:
+  // its words must spell its letters. New terms are underlined at once.
+  async function ask(text) {
+    let items = null;
+    try {
+      ({ items } = await chrome.runtime.sendMessage({ type: 'read', text, title: document.title }));
+    } catch {}
+    if (!on || !items) return;
+    let changed = false;
+    for (const { term, standsFor, gloss } of items) {
+      if (found[term] || page[term] || !AB.believable(term, standsFor)) continue;
+      found[term] = { standsFor, gloss };
+      changed = true;
+    }
+    if (changed) {
+      known();
+      remark();
+    }
+  }
+
+  // About CONTEXT characters of the block a word sits in, centred on it.
+  function contextOf(hit) {
+    const block = hit.node.parentElement.closest(BLOCK) || hit.node.parentElement;
+    const before = new Range();
+    before.setStart(block, 0);
+    before.setEnd(hit.node, hit.start);
+    const at = before.toString().length;
+    const text = block.textContent;
+    const from = Math.max(0, Math.min(at - CONTEXT / 2, text.length - CONTEXT));
+    return text.slice(from, from + CONTEXT).replace(/\s+/g, ' ').trim();
+  }
+
+  // The read that covers a hovered word: the piece its text was sent in, or,
+  // past the page's budget, the text around it on its own.
+  const alone = new Map();
+  function readFor(hit) {
+    if (readOf.has(hit.node)) return readOf.get(hit.node);
+    const text = contextOf(hit);
+    // Not behind the page's queue: the pointer is waiting on this one.
+    if (!alone.has(text)) alone.set(text, ask(text));
+    return alone.get(text);
+  }
+
   // ── Hover ─────────────────────────────────────────────────────────────
 
   let pointer = null; // { x, y, alt }
@@ -113,7 +230,22 @@
   let hideTimer = 0;
   let overBubble = false;
 
-  // The acronym under a point, or null.
+  // The term under offset i: a known one first, then anything shaped like
+  // an abbreviation.
+  function termAt(text, i) {
+    if (pattern && !AB.shouty(text)) {
+      pattern.lastIndex = 0;
+      let m;
+      while ((m = pattern.exec(text))) {
+        if (m.index > i) break;
+        if (i < m.index + m[0].length) return { term: m[0], start: m.index, end: m.index + m[0].length };
+      }
+    }
+    return AB.tokenAt(text, i);
+  }
+
+  // The abbreviation under a point, or null. One the agent has not read yet
+  // comes back with source 'loading'.
   function hitAt(x, y) {
     const pos = document.caretPositionFromPoint(x, y);
     if (!pos || !pos.offsetNode || pos.offsetNode.nodeType !== Node.TEXT_NODE) return null;
@@ -122,20 +254,34 @@
     const text = node.nodeValue;
     // The caret can sit just after the last letter of the word.
     for (const i of [pos.offset, pos.offset - 1]) {
-      const tok = AB.tokenAt(text, i);
+      const tok = termAt(text, i);
       if (!tok) continue;
       const range = new Range();
       range.setStart(node, tok.start);
       range.setEnd(node, tok.end);
       const rect = [...range.getClientRects()].find((b) => x >= b.left - 1 && x <= b.right + 1 && y >= b.top - 1 && y <= b.bottom + 1);
       if (!rect) return null;
-      const hit = AB.resolve(tok.term, page, text) || (settings.context && AB.askable(tok.term, text) && { term: tok.term, meanings: [], source: 'unknown' });
-      return hit && { ...hit, node, start: tok.start, rect };
+      const at = { node, start: tok.start, rect };
+      const hit = !AB.shouty(text) && AB.resolve(tok.term, page, found);
+      if (hit) return { ...hit, ...at };
+      // Read already, and not an abbreviation there.
+      if (!agent.ready || !AB.askable(tok.term, text) || finished.has(node) || settled(node, tok.term)) return null;
+      return { term: tok.term, meanings: [], gloss: '', source: 'loading', ...at };
     }
     return null;
   }
 
+  // Words the agent read on their own and found nothing in, per text node.
+  let nothing = new WeakMap();
+  const settled = (node, term) => !!nothing.get(node)?.has(term);
+
   const same = (a, b) => a && b && a.node === b.node && a.start === b.start;
+
+  // The pointer is still on the word the bubble shows.
+  const onWord = () => {
+    const r = current && current.rect;
+    return !!(r && pointer && pointer.x >= r.left - 1 && pointer.x <= r.right + 1 && pointer.y >= r.top - 1 && pointer.y <= r.bottom + 1);
+  };
 
   function check() {
     frame = 0;
@@ -195,25 +341,28 @@
   function loadBubble() {
     bubble =
       bubble ||
-      import(chrome.runtime.getURL('dist/bubble.js'))
-        .then((m) =>
-          m.mount({
+      (async () => {
+        try {
+          const m = await import(chrome.runtime.getURL('dist/bubble.js'));
+          return await m.mount({
             cssUrl: chrome.runtime.getURL('dist/mova.css'),
             onEnter: () => {
               overBubble = true;
               clearTimeout(hideTimer);
             },
+            // The bubble can spring under a pointer that rests on the word
+            // and away again; that is not the pointer leaving.
             onLeave: () => {
               overBubble = false;
-              hideSoon();
+              if (!onWord()) hideSoon();
             },
             onMore: () => setTimeout(hide, 0),
-          }),
-        )
-        .catch((err) => {
+          });
+        } catch (err) {
           console.warn('[Acronym Bubble] the bubble did not load, using the plain one:', err);
           return plainBubble();
-        });
+        }
+      })();
     return bubble;
   }
 
@@ -228,21 +377,22 @@
     return matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
   }
 
+  // Opens the bubble. A word still loading shows a spinner until the agent
+  // has read it; then it shows the meaning, or closes if there is none.
   function show(hit) {
     clearTimeout(hideTimer);
     current = hit;
-    if (hit.meanings.length) render(hit);
-    const ambiguous = hit.source === 'dictionary' && hit.meanings.length > 1;
-    if (!settings.context || !(ambiguous || hit.source === 'unknown')) return;
-    // The dictionary's answer shows at once; the model's replaces it when it
-    // comes. An unknown acronym shows only once the model has an answer.
-    ask(hit).then((answer) => {
+    render(hit);
+    if (hit.source !== 'loading') return;
+    (async () => {
+      await readFor(hit);
+      const next = AB.resolve(hit.term, page, found);
+      if (!next) nothing.set(hit.node, (nothing.get(hit.node) || new Set()).add(hit.term));
       if (current !== hit) return;
-      const next = AB.inContext(hit, answer);
-      if (!next || next === hit) return;
-      current = next;
-      render(next);
-    });
+      if (!next) return hide();
+      current = { ...hit, ...next };
+      render(current);
+    })();
   }
 
   function render(hit) {
@@ -251,38 +401,15 @@
       key: `${hit.term}:${hit.start}:${Math.round(hit.rect.top)}:${Math.round(hit.rect.left)}`,
       term: hit.term,
       meanings: hit.meanings,
+      gloss: hit.gloss,
       source: hit.source,
       url: AB.searchUrl(hit),
       rect: { top: hit.rect.top, bottom: hit.rect.bottom, left: hit.rect.left, width: hit.rect.width },
     };
-    loadBubble().then((b) => current === hit && b.show(view, theme));
-  }
-
-  // ── Context ───────────────────────────────────────────────────────────
-
-  // About CONTEXT characters of the block the acronym sits in, centred on it.
-  function contextOf(hit) {
-    const block = hit.node.parentElement.closest(BLOCK) || hit.node.parentElement;
-    const before = new Range();
-    before.setStart(block, 0);
-    before.setEnd(hit.node, hit.start);
-    const at = before.toString().length;
-    const text = block.textContent;
-    const from = Math.max(0, Math.min(at - CONTEXT / 2, text.length - CONTEXT));
-    return text.slice(from, from + CONTEXT).replace(/\s+/g, ' ').trim();
-  }
-
-  // The model's answer, from the background worker, once per acronym and
-  // context. Null when the model is missing, busy or has no answer.
-  const answers = new Map();
-  function ask(hit) {
-    const context = contextOf(hit);
-    const key = `${hit.term}\n${context}`;
-    if (!answers.has(key)) {
-      const msg = { type: 'sense', term: hit.term, known: hit.meanings, context, title: document.title };
-      answers.set(key, chrome.runtime.sendMessage(msg).catch(() => null));
-    }
-    return answers.get(key);
+    (async () => {
+      const b = await loadBubble();
+      if (current === hit) b.show(view, theme);
+    })();
   }
 
   function hide() {
@@ -291,7 +418,7 @@
     if (!current) return;
     current = null;
     overBubble = false;
-    if (bubble) bubble.then((b) => b.hide());
+    if (bubble) (async () => (await bubble).hide())();
   }
 
   // Used only if dist/bubble.js fails to load: the same words, no motion.
@@ -315,7 +442,7 @@
       show(view, theme) {
         shadow.querySelector('div').className = theme;
         shadow.querySelector('b').textContent = view.term;
-        shadow.querySelector('span').textContent = view.meanings.join(' · ');
+        shadow.querySelector('span').textContent = view.source === 'loading' ? '…' : [view.meanings[0], view.gloss].filter(Boolean).join(' · ');
         shadow.querySelector('a').href = view.url;
         host.style.display = 'block';
         host.style.left = `${Math.max(8, view.rect.left)}px`;
@@ -329,8 +456,14 @@
 
   // ── On and off ────────────────────────────────────────────────────────
 
-  function start() {
+  async function start() {
     on = true;
+    try {
+      agent = await chrome.runtime.sendMessage({ type: 'agent-status' });
+    } catch {
+      agent = { ready: false };
+    }
+    if (!on) return;
     CSS.highlights.set(NAME, marks);
     scan(document.body);
     observer = new MutationObserver(onMutate);
@@ -348,7 +481,18 @@
     hide();
     if (observer) observer.disconnect();
     clearTimeout(flushTimer);
+    if (idle) cancelIdleCallback(idle);
+    idle = 0;
     added = [];
+    waiting = [];
+    budget = READ_MAX;
+    readOf = new WeakMap();
+    finished = new WeakSet();
+    nothing = new WeakMap();
+    alone.clear();
+    page = {};
+    found = {};
+    pattern = null;
     marks.clear();
     seen.clear();
     CSS.highlights.delete(NAME);
@@ -368,8 +512,10 @@
   }
 
   if (!document.body || !CSS.highlights || !document.caretPositionFromPoint) return;
-  chrome.storage.sync.get('settings').then(({ settings: s }) => apply(s));
+  (async () => apply((await chrome.storage.sync.get('settings')).settings))();
   chrome.storage.onChanged.addListener((changes, area) => {
     if (area === 'sync' && changes.settings) apply(changes.settings.newValue);
+    // A new Claude key, or the agent's state after a rejected one.
+    if (area === 'local' && (changes.claudeKey || changes.claudeBaseUrl)) apply(settings);
   });
 })();

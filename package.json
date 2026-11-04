@@ -4,7 +4,7 @@
   "private": true,
   "description": "Chrome extension: hover an acronym, see what it stands for.",
   "scripts": {
-    "build": "rm -rf dist && bun build src/mova/bubble.jsx src/popup/popup.jsx src/pdf/viewer.js --outdir dist --splitting --format esm --production --entry-naming '[name].[ext]' --chunk-naming 'chunk-[hash].[ext]' && tailwindcss -c src/mova/tailwind.config.cjs -i src/mova/mova.css -o dist/mova.css --minify && cp src/mova/LICENSE.mova dist/ && bun run pdfjs",
+    "build": "rm -rf dist && bun build src/mova/bubble.jsx src/popup/popup.jsx src/pdf/viewer.js --outdir dist --splitting --format esm --production --entry-naming '[name].[ext]' --chunk-naming 'chunk-[hash].[ext]' && bun build src/background.js --outfile dist/background.js --format esm --target browser --production && tailwindcss -c src/mova/tailwind.config.cjs -i src/mova/mova.css -o dist/mova.css --minify && cp src/mova/LICENSE.mova dist/ && bun run pdfjs",
     "pdfjs": "P=node_modules/pdfjs-dist && cp $P/build/pdf.worker.min.mjs dist/pdf.worker.mjs && cp $P/web/pdf_viewer.css dist/ && cp -R $P/web/images dist/images && mkdir -p dist/pdfjs && cp -R $P/cmaps $P/standard_fonts dist/pdfjs/ && cp $P/LICENSE dist/LICENSE.pdfjs",
     "icons": "node tools/make-icons.js",
     "test": "node test/find.test.js",
@@ -13,7 +13,8 @@
     "scan": "node tools/scan/corpus.js",
     "scan:browser": "node tools/scan/browser.js",
     "check": "bun run build && npm test && npm run e2e",
-    "zip": "bun run build && rm -f acronym-bubble.zip && zip -qr acronym-bubble.zip manifest.json src/*.js src/*.css src/lib src/popup/popup.html src/pdf/viewer.html src/pdf/viewer.css dist icons -x '*.DS_Store'"
+    "check:zip": "npm run zip && rm -rf .zip-check && mkdir .zip-check && unzip -q acronym-bubble.zip -d .zip-check && AB_ROOT=.zip-check node test/e2e/run.js; s=$?; rm -rf .zip-check; exit $s",
+    "zip": "bun run build && rm -f acronym-bubble.zip && zip -qr acronym-bubble.zip manifest.json src/content.js src/content.css src/lib src/popup/popup.html src/pdf/viewer.html src/pdf/viewer.css dist icons -x '*.DS_Store'"
   },
   "devDependencies": {
     "framer-motion": "11.11.17",
@@ -23,5 +24,9 @@
     "react": "18.3.1",
     "react-dom": "18.3.1",
     "tailwindcss": "3.4.17"
+  },
+  "dependencies": {
+    "@anthropic-ai/sdk": "^1.4.0",
+    "zod": "^4.6.7"
   }
 }

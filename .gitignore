@@ -7,3 +7,5 @@ scan-report.json
 browser-report.json
 scan-shots/
 tools/scan/urls.txt
+.zip-check/
+.debug/

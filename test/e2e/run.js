@@ -14,7 +14,8 @@
 const fs = require('fs');
 const path = require('path');
 const { pathToFileURL } = require('url');
-const { launch, open, hover, away, bubble, bubbleBox, opens, shot } = require('./lib/harness.js');
+const { launch, open, hover, away, bubble, answered, bubbleBox, opens, shot } = require('./lib/harness.js');
+const { fakeClaude } = require('./lib/fake-claude.js');
 const { serve, SITES } = require('./lib/server.js');
 const args = require('../../tools/scan/lib/args.js')();
 
@@ -57,14 +58,14 @@ function format(name, file, { word = 'API', expect, note, url, settle }) {
 
 const CASES = [
   {
-    name: 'docs · dictionary, page definitions, abbr, shouting, code, late text',
+    name: 'docs · agent meanings, page definitions, abbr, shouting, code, late text',
     async run(t, { ab, site }) {
       const page = await open(ab, site.url('docs.html'));
       const html = await page.evaluate(() => document.getElementById('p1').innerHTML);
       t.ok('no nodes added to the text', !html.includes('<span'), html);
 
       await hover(page, 'API', { selector: '#p1' });
-      let text = await bubble(page);
+      let text = await answered(page);
       t.ok('API opens a bubble', text && text.includes('Application Programming Interface'), String(text));
       t.ok('the bubble has a More link', text && text.includes('More'), String(text));
       await shot(page, 'light-api', { x: 0, y: 0, width: 760, height: 260 });
@@ -96,6 +97,79 @@ const CASES = [
       await page.waitForTimeout(500);
       t.ok('Escape closes', (await bubble(page)) === null);
       t.clean(page);
+      await page.close();
+    },
+  },
+  {
+    name: 'agent · a spinner while it reads, then the meaning',
+    async run(t, { ab, site, claude }) {
+      await ab.settings();
+      // Slow answers, and a pointer that arrives before the page is read.
+      // A page no case has read yet: the worker keeps answers it has given.
+      claude.delay(1500);
+      const page = await open(ab, site.url('rendered-md.html'), { settle: 50 });
+      await hover(page, 'REST', { selector: '#p1', wait: 450 });
+      const loading = await bubble(page);
+      const spinner = await page.evaluate(() => !!document.querySelector('[data-acronym-bubble]')?.shadowRoot.querySelector('[role=status]'));
+      t.ok('the bubble opens at once, loading', loading && loading.includes('Reading the page'), String(loading));
+      t.ok('it shows the Mova spinner', spinner);
+      await shot(page, 'loading', { x: 0, y: 0, width: 760, height: 260 });
+      const done = await answered(page, 5000);
+      t.ok('the meaning replaces the spinner', done && done.includes('Representational State Transfer'), String(done));
+      claude.delay(300);
+      t.clean(page);
+      await page.close();
+    },
+  },
+  {
+    name: 'agent · TL;DR, e.g., imo and lgtm, with no word lists',
+    async run(t, { ab, site }) {
+      const page = await open(ab, site.url('chat.html'), { settle: 2500 });
+      const tldr = await opens(page, 'TL;DR', "Too Long; Didn't Read", { selector: '#tldr' });
+      t.ok('TL;DR opens', tldr.ok, String(tldr.text));
+      const eg = await opens(page, 'e.g.', 'exempli gratia', { selector: '#eg' });
+      t.ok('e.g. opens, with a gloss', eg.ok && eg.text.includes('for example'), String(eg.text));
+      t.ok('imo opens', (await opens(page, 'imo', 'In My Opinion', { selector: '#imo' })).ok);
+      t.ok('lgtm opens', (await opens(page, 'lgtm', 'Looks Good To Me', { selector: '#imo' })).ok);
+      const wrong = await opens(page, 'WSS', null, { selector: '#wrong' });
+      t.ok('an answer that does not spell the term is dropped', !wrong.ok, String(wrong.text));
+      t.ok('a plain word does not open', !(await opens(page, 'abbreviations', null, { selector: '#plain' })).ok);
+      const marks = await page.evaluate(() => [...(CSS.highlights.get('acronym-bubble') || [])].map((r) => r.toString()));
+      t.ok('the chat forms are underlined', ['TL;DR', 'e.g.', 'imo', 'lgtm'].every((w) => marks.includes(w)), JSON.stringify(marks));
+      t.ok('the dropped one is not', !marks.includes('WSS'), JSON.stringify(marks));
+      await shot(page, 'chat', { x: 0, y: 0, width: 760, height: 260 });
+      t.clean(page);
+      await page.close();
+    },
+  },
+  {
+    name: 'agent · on-device with no model: page definitions only, no spinner, no requests',
+    async run(t, { ab, site, claude }) {
+      await ab.settings({ agent: 'device' });
+      const before = claude.requests.length;
+      const page = await open(ab, site.url('docs.html'), { settle: 2000 });
+      const def = await opens(page, 'CDP)', 'Customer Data Platform', { selector: '#p2' });
+      t.ok('a page definition still opens', def.ok, String(def.text));
+      t.ok('an abbreviation the page does not define gets nothing', !(await opens(page, 'REST', null, { selector: '#p1' })).ok);
+      t.ok('nothing was sent to Claude', claude.requests.length === before, `${claude.requests.length - before} requests`);
+      await ab.settings();
+      t.clean(page);
+      await page.close();
+    },
+  },
+  {
+    name: 'agent · a rejected key shows in the popup',
+    async run(t, { ab, site }) {
+      await ab.local({ claudeKey: 'bad', agentError: '' });
+      const page = await open(ab, site.url('editor.html'), { settle: 2500 });
+      t.ok('no bubble with a rejected key', !(await opens(page, 'REST', null, { selector: '#read' })).ok);
+      const popup = await ab.context.newPage();
+      await popup.goto(`chrome-extension://${ab.id}/src/popup/popup.html`);
+      await popup.waitForTimeout(600);
+      const note = await popup.textContent('#agent-note');
+      t.ok('the popup says the key was rejected', note.includes('rejected'), note);
+      await ab.local({ claudeKey: 'test', agentError: '' });
+      await popup.close();
       await page.close();
     },
   },
@@ -145,12 +219,14 @@ const CASES = [
     name: 'popup · switches and choices, light and dark',
     async run(t, { ab }) {
       const popup = await ab.context.newPage();
-      await popup.setViewportSize({ width: 268, height: 400 });
+      await popup.setViewportSize({ width: 268, height: 560 });
       await popup.goto(`chrome-extension://${ab.id}/src/popup/popup.html`);
       await popup.waitForTimeout(500);
-      t.ok('popup renders its choices', (await popup.locator('button[aria-pressed]').count()) === 5);
-      // On, Meaning from context and PDFs; This site hides on an extension page.
-      t.ok('popup renders its switches', (await popup.locator('.ab-switch input[type=checkbox]').count()) === 3);
+      // Model, Underline and Open on.
+      t.ok('popup renders its choices', (await popup.locator('button[aria-pressed]').count()) === 7);
+      // On and PDFs; This site hides on an extension page.
+      t.ok('popup renders its switches', (await popup.locator('.ab-switch input[type=checkbox]').count()) === 2);
+      t.ok('the Claude key field shows', (await popup.locator('input[aria-label="Anthropic API key"]').count()) === 1);
       await shot(popup, 'popup');
       await popup.emulateMedia({ colorScheme: 'dark' });
       const bg = await popup.evaluate(() => getComputedStyle(document.body).backgroundColor);
@@ -331,11 +407,12 @@ const CASES = [
   const only = typeof args.only === 'string' ? args.only : null;
   const cases = CASES.filter((c) => !only || c.name.includes(only));
   const site = await serve();
-  const ab = await launch();
+  const claude = await fakeClaude({ delay: 300 });
+  const ab = await launch({ claude });
   for (const c of cases) {
     const t = reporter();
     try {
-      await c.run(t, { ab, site });
+      await c.run(t, { ab, site, claude });
     } catch (err) {
       t.ok('case ran', false, err.message.split('\n')[0]);
     }
@@ -344,6 +421,7 @@ const CASES = [
   }
   await ab.close();
   site.close();
+  claude.close();
 
   if (matrix.length) {
     console.log('\nFormat support');

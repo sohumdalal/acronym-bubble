@@ -1,8 +1,8 @@
-// The extension's own rules, run over text without a browser: which tokens
-// are acronyms, which the dictionary or the page explains, which have more
-// than one meaning (the model's work), and which it does not know.
+// The extension's own rules, run over text without a browser: which words
+// are shaped like abbreviations, and which ones the page defines itself.
+// The rest is the agent's work, which this does not run: `known` holds only
+// page definitions, and `unknown` is what the agent would be asked about.
 globalThis.self = globalThis;
-require('../../../src/dict.js');
 require('../../../src/lib/find.js');
 const AB = globalThis.AB;
 
@@ -32,17 +32,16 @@ const odd = (meaning) => meaning.split(/\s+/).length > 7 || /\d/.test(meaning);
 function analyze(body, type) {
   const nodes = textOf(body, type);
   const page = AB.definitions(nodes.join(' '));
-  const out = { nodes: nodes.length, tokens: 0, known: {}, page: {}, ambiguous: {}, unknown: {}, suspicious: [] };
+  const out = { nodes: nodes.length, tokens: 0, known: {}, page: {}, unknown: {}, suspicious: [] };
   const bump = (map, k) => (map[k] = (map[k] || 0) + 1);
   for (const [term, meaning] of Object.entries(page)) if (odd(meaning)) out.suspicious.push({ why: 'odd page definition', text: `${term} = ${meaning}` });
   for (const text of nodes) {
-    for (const m of text.match(AB.TOKEN) || []) {
+    for (const m of [...(text.match(AB.TOKEN) || []), ...(text.match(AB.DOTTED) || [])]) {
       out.tokens += 1;
-      const hit = AB.resolve(m, page, text);
-      if (hit && hit.source === 'page') bump(out.page, hit.term);
-      else if (hit) {
+      const hit = !AB.shouty(text) && AB.resolve(m, page);
+      if (hit) {
+        bump(out.page, hit.term);
         bump(out.known, hit.term);
-        if (hit.meanings.length > 1) bump(out.ambiguous, hit.term);
       } else if (AB.askable(m, text)) bump(out.unknown, m.replace(/s$/, ''));
     }
   }

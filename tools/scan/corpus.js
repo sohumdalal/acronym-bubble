@@ -1,10 +1,10 @@
 #!/usr/bin/env node
 // Scans many real pages and files without a browser: fetch each one, take
 // the text the content script would read, and run the extension's own rules
-// over it. This is the mode that scales. It says how many acronyms the
-// dictionary explains, which ones have more than one meaning (where the
-// model decides), and which ones it does not know: the list to grow the
-// dictionary from.
+// over it. This is the mode that scales. It says how many words are shaped
+// like abbreviations, how many the pages define themselves, and which ones
+// the agent would be asked about, most common first. It does not run the
+// agent.
 //
 //   node tools/scan/corpus.js [--urls tools/scan/urls.txt] [--files tools/scan/files.txt]
 //                             [--limit 1000] [--concurrency 4] [--out scan-report.json]
@@ -56,7 +56,6 @@ async function main() {
     f.explained += Object.values(p.known).reduce((a, b) => a + b, 0) + Object.values(p.page).reduce((a, b) => a + b, 0);
   }
   const known = good.reduce((m, p) => merge(m, p.known), {});
-  const ambiguous = good.reduce((m, p) => merge(m, p.ambiguous), {});
   const unknown = good.reduce((m, p) => merge(m, p.unknown), {});
   // How many pages each unknown acronym is on: one page repeating a product
   // name is not a dictionary gap.
@@ -77,13 +76,11 @@ async function main() {
       pdfs: pages.filter((p) => p.skipped === 'pdf').length,
       failed: failed.length,
       explained: sum(known) + good.reduce((n, p) => n + sum(p.page), 0),
-      ambiguous: sum(ambiguous),
       unknown: sum(unknown),
       suspicious: suspicious.length,
     },
     formats,
     topKnown: top(known),
-    topAmbiguous: top(ambiguous),
     gaps,
     suspicious: suspicious.slice(0, 120),
     failures: failed.slice(0, 60),
@@ -94,13 +91,12 @@ async function main() {
   const t = report.totals;
   const cover = t.explained + t.unknown ? Math.round((t.explained / (t.explained + t.unknown)) * 100) : 0;
   console.log(`\nRead ${t.read}/${urls.length} in ${Math.round((Date.now() - started) / 1000)}s (${t.pdfs} PDFs counted, ${t.failed} failed)`);
-  console.log(`  explained        ${t.explained} acronyms, ${cover}% of the ones that look like acronyms`);
-  console.log(`  ambiguous        ${t.ambiguous} (the model picks the meaning)`);
-  console.log(`  unknown          ${t.unknown}`);
+  console.log(`  defined by pages ${t.explained} uses, ${cover}% of the words shaped like abbreviations`);
+  console.log(`  for the agent    ${t.unknown}`);
   console.log(`  suspicious       ${t.suspicious}`);
   console.log('\nBy format');
   for (const [f, v] of Object.entries(formats)) console.log(`  ${f.padEnd(9)} ${String(v.pages).padStart(4)} pages  ${v.tokens} tokens  ${v.explained} explained`);
-  if (gaps.length) console.log(`\nMost common unknown acronyms (on 2+ pages):\n  ${gaps.slice(0, 25).map((g) => `${g.term} ×${g.uses}`).join('  ')}`);
+  if (gaps.length) console.log(`\nMost common words for the agent (on 2+ pages):\n  ${gaps.slice(0, 25).map((g) => `${g.term} ×${g.uses}`).join('  ')}`);
   if (suspicious.length) {
     console.log('\nSuspicious (first 10):');
     for (const s of suspicious.slice(0, 10)) console.log(`  · ${s.why.padEnd(22)} "${s.text}"  ${s.url}`);

@@ -5,11 +5,15 @@ const os = require('os');
 const path = require('path');
 const { chromium } = require('playwright');
 
-const ROOT = path.join(__dirname, '..', '..', '..');
+// AB_ROOT=dir runs the suite against another copy, such as the unzipped
+// store package (npm run check:zip).
+const ROOT = process.env.AB_ROOT ? path.resolve(process.env.AB_ROOT) : path.join(__dirname, '..', '..', '..');
 const SHOTS = path.join(__dirname, '..', '..', 'shots');
-const DEFAULTS = { enabled: true, disabledHosts: [], underline: 'every', trigger: 'hover', context: true, pdf: true };
+// The test browser has no built-in model, so the suite reads pages with the
+// Claude path, pointed at the stand-in server in fake-claude.js.
+const DEFAULTS = { enabled: true, disabledHosts: [], underline: 'every', trigger: 'hover', agent: 'claude', pdf: true };
 
-async function launch({ headed = !!process.env.HEADED } = {}) {
+async function launch({ headed = !!process.env.HEADED, claude } = {}) {
   const profile = fs.mkdtempSync(path.join(os.tmpdir(), 'ab-e2e-'));
   const context = await chromium.launchPersistentContext(profile, {
     headless: !headed,
@@ -25,7 +29,11 @@ async function launch({ headed = !!process.env.HEADED } = {}) {
   // moment after the worker starts; a PDF loaded before then is missed.
   await new Promise((r) => setTimeout(r, 1000));
   fs.mkdirSync(SHOTS, { recursive: true });
+  const local = (v) => worker.evaluate((x) => chrome.storage.local.set(x), v);
+  await worker.evaluate((v) => chrome.storage.sync.set({ settings: v }), DEFAULTS);
+  if (claude) await local({ claudeKey: 'test', claudeBaseUrl: claude.url });
   return {
+    local,
     context,
     worker,
     id: new URL(worker.url()).host,
@@ -130,10 +138,23 @@ function bubbleBox(page) {
   });
 }
 
-// Rests on a word and reports whether a bubble opened with `expect` in it.
+// The bubble's text once it has stopped loading, or null. Waits up to
+// `wait` ms for the agent's answer.
+async function answered(page, wait = 4000) {
+  const until = Date.now() + wait;
+  let text = await bubble(page);
+  while (text && text.includes('Reading the page') && Date.now() < until) {
+    await page.waitForTimeout(150);
+    text = await bubble(page);
+  }
+  return text;
+}
+
+// Rests on a word and reports whether a bubble opened with `expect` in it,
+// after any loading.
 async function opens(page, word, expect, opts) {
   const at = await hover(page, word, opts);
-  const text = at ? await bubble(page) : null;
+  const text = at ? await answered(page) : null;
   await away(page);
   return { found: !!at, text, ok: !!text && (!expect || text.includes(expect)) };
 }
@@ -142,4 +163,4 @@ function shot(page, name, clip) {
   return page.screenshot({ path: path.join(SHOTS, `${name}.png`), ...(clip ? { clip } : {}) });
 }
 
-module.exports = { launch, open, hover, away, bubble, bubbleBox, opens, find, shot, DEFAULTS };
+module.exports = { launch, open, hover, away, bubble, answered, bubbleBox, opens, find, shot, DEFAULTS };

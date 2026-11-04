@@ -120,6 +120,24 @@
   text-underline-offset: 2px;
 }
 
+/* AppleRadialSpinner: Mova's bar fade, here so a page's style-src policy
+   cannot block it (see ui/apple-spinner.jsx). */
+@keyframes apple_bar_fade {
+  0% { opacity: 1; }
+  100% { opacity: 0.15; }
+}
+
+.ab-spin-bar {
+  background: var(--ink);
+  animation: apple_bar_fade 0.8s linear infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ab-spin-bar {
+    animation-duration: 2.4s;
+  }
+}
+
 /* ── Popup skin ──────────────────────────────────────────────────────── */
 
 .ab-page {
@@ -151,6 +169,44 @@
   .mova.ab-page .ab-seg-pill {
     background: #48484a;
   }
+}
+
+/* SecretInput (Mova's password-toggle field). */
+.ab-field {
+  background: var(--panel);
+  border-color: var(--line);
+  border-radius: 8px;
+  color: var(--ink);
+  font-family: inherit;
+}
+
+.ab-field:focus {
+  border-color: var(--accent);
+}
+
+.ab-field::placeholder {
+  color: var(--ink-faint);
+}
+
+.ab-field-eye {
+  color: var(--ink-soft);
+}
+
+.ab-field-eye:hover {
+  color: var(--ink);
+}
+
+/* Unit Bubble's primary button. */
+.ab-button {
+  background: var(--accent);
+  border-radius: 8px;
+  color: #ffffff;
+  font-family: inherit;
+}
+
+.ab-button:disabled {
+  opacity: 0.4;
+  cursor: default;
 }
 
 .ab-rule {

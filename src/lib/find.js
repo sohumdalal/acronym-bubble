@@ -1,44 +1,56 @@
-// What counts as an acronym, what it stands for, and where a page defines one.
-// No DOM here, so node can test it: test/find.test.js.
+// What looks like an abbreviation, where a page defines one, and whether a
+// model's answer is believable. There are no word lists here: the page and
+// the model (src/agent/) say what each abbreviation means. No DOM here, so
+// node can test it: test/find.test.js.
 (function (AB) {
   // A token with at least two capitals, such as API, SaaS, gRPC or AT&T.
   // Lookarounds rather than \b, because & is not a word character.
   const TOKEN = /(?<![A-Za-z0-9&])(?=[A-Za-z0-9&]*[A-Z][A-Za-z0-9&]*[A-Z])[A-Za-z][A-Za-z0-9&]*(?![A-Za-z0-9&])/g;
-  const TOKEN_CHAR = /[A-Za-z0-9&]/;
+  // Short letter groups joined by dots or semicolons: TL;DR, e.g., a.k.a.,
+  // Ph.D., U.S. Groups of one or two letters, so file names such as
+  // index.js and words at the end of a sentence do not match.
+  const DOTTED = /(?<![A-Za-z0-9&.;])(?:[A-Za-z]{1,2}[.;]){1,4}[A-Za-z]{1,2}\.?(?![A-Za-z0-9&])/g;
 
   // Words a definition may skip: "Software as a Service" is SaaS.
   const STOP = new Set(['a', 'an', 'and', 'as', 'at', 'by', 'for', 'from', 'in', 'of', 'on', 'or', 'over', 'the', 'to', 'via', 'with', '&']);
 
-  const list = (v) => (Array.isArray(v) ? v : [v]);
-
-  // Text written mostly in capitals, where IT and US are just words.
+  // Text written mostly in capitals. Every word there is in capitals, so a
+  // capital word says nothing about being an abbreviation.
   function shouty(text) {
     const letters = text.replace(/[^A-Za-z]/g, '');
     if (letters.length < 8) return false;
     return letters.replace(/[^A-Z]/g, '').length / letters.length > 0.6;
   }
 
-  // The acronym's letters, lowercased: AT&T is "att", IPv6 is "ip".
+  // The abbreviation's letters, lowercased: AT&T is "att", TL;DR is "tldr",
+  // imo is "imo". A lowercase tail after capitals is a suffix, not letters
+  // to spell: IPv6 is "ip".
   function letters(term) {
-    return term.replace(/[^A-Za-z]/g, '').replace(/[a-z]+$/, (tail) => (term === term.toUpperCase() ? tail : '')).toLowerCase();
+    const plain = term.replace(/[^A-Za-z]/g, '');
+    if (!/[A-Z]/.test(plain) || plain === plain.toUpperCase() || /[.;]/.test(term)) return plain.toLowerCase();
+    return plain.replace(/(?<=[A-Z])[a-z]+$/, '').toLowerCase();
   }
 
   // Each word offers the letters it can stand for: its first letter, or its
-  // own capitals ("JavaScript" gives "js"). Hyphens split words.
-  function offers(word) {
+  // own capitals ("JavaScript" gives "js"). Hyphens split words. `loose`
+  // also lets it give its first letter and one later letter, as real
+  // expansions do: REST is "Representational State Transfer", HTTPS is
+  // "Hypertext Transfer Protocol Secure", IdP is "Identity Provider".
+  function offers(word, loose) {
     const out = [word[0].toLowerCase()];
     const caps = word.replace(/[^A-Z]/g, '');
     if (caps.length > 1) out.push(caps.toLowerCase());
+    if (loose) for (const c of word.slice(1).toLowerCase()) out.push(word[0].toLowerCase() + c);
     return out;
   }
 
   // True when the words spell the letters exactly, skipping stop words that
   // do not help. The first word must count.
-  function spells(words, want) {
+  function spells(words, want, loose = false) {
     const go = (wi, li) => {
       if (wi === words.length) return li === want.length;
       const w = words[wi];
-      for (const o of offers(w)) {
+      for (const o of offers(w, loose)) {
         if (want.startsWith(o, li) && go(wi + 1, li + o.length)) return true;
       }
       return wi > 0 && STOP.has(w.toLowerCase()) && go(wi + 1, li);
@@ -46,7 +58,11 @@
     return want.length > 1 && words.length > 0 && go(0, 0);
   }
 
-  const split = (text) => text.split(/[\s-]+/).filter((w) => /^[A-Za-z&]/.test(w));
+  const split = (text) =>
+    text
+      .split(/[\s-]+/)
+      .map((w) => w.replace(/^[^A-Za-z&]+/, ''))
+      .filter((w) => /^[A-Za-z&]/.test(w));
 
   // "Single Sign-On (SSO)" and "SSO (Single Sign-On)", as {term: meaning}.
   function definitions(text) {
@@ -82,61 +98,65 @@
     return found;
   }
 
-  // The token around offset i in text, or null.
+  // The abbreviation-shaped token around offset i in text, or null.
   function tokenAt(text, i) {
-    if (!TOKEN_CHAR.test(text[i] || '')) return null;
-    let start = i;
-    let end = i;
-    while (start > 0 && TOKEN_CHAR.test(text[start - 1])) start--;
-    while (end < text.length && TOKEN_CHAR.test(text[end])) end++;
-    const term = text.slice(start, end);
-    TOKEN.lastIndex = 0;
-    const m = TOKEN.exec(term);
-    return m && m[0] === term ? { term, start, end } : null;
-  }
-
-  // What a term stands for: { term, meanings, source } or null. A page's own
-  // definition wins over the dictionary, and a plural falls back to its
-  // singular. Word-like terms in shouting text are left alone.
-  function resolve(term, page, context = '') {
-    const tries = term.endsWith('s') && term.length > 2 ? [term, term.slice(0, -1)] : [term];
-    for (const t of tries) {
-      if (page && page[t]) return { term: t, meanings: list(page[t]), source: 'page' };
-    }
-    for (const t of tries) {
-      if (!AB.DICT[t]) continue;
-      if (AB.WORDLIKE.has(t) && shouty(context)) return null;
-      return { term: t, meanings: list(AB.DICT[t]), source: 'dictionary' };
+    for (const re of [DOTTED, TOKEN]) {
+      re.lastIndex = 0;
+      let m;
+      while ((m = re.exec(text))) {
+        if (m.index > i) break;
+        if (i < m.index + m[0].length) return { term: m[0], start: m.index, end: m.index + m[0].length };
+      }
     }
     return null;
   }
 
-  // Words written in capitals that are not acronyms: RFC 2119 keywords, HTTP
-  // methods and labels. Found by the corpus scan (npm run scan), where specs
-  // and API docs use them hundreds of times a page.
-  const PLAIN_CAPS = new Set(
-    'MUST SHOULD SHALL MAY NOT REQUIRED OPTIONAL GET PUT POST HEAD DELETE PATCH TRACE OPTIONS CONNECT OK NOTE TODO FIXME WARNING AND OR THE YES NO NEW'.split(' '),
-  );
-
-  // An all-caps token the dictionary does not know, such as CDP or B2B: worth
-  // asking the model about. Mixed case (GitHub, iPhone) is a name, not an
-  // acronym, and in shouting text every word is in capitals.
+  // Worth asking the model about: shaped like an abbreviation, and not in
+  // text where every word is in capitals.
   function askable(term, context = '') {
-    return /^[A-Z][A-Z0-9&]{1,5}s?$/.test(term) && !PLAIN_CAPS.has(term) && !shouty(context);
+    DOTTED.lastIndex = 0;
+    const dotted = DOTTED.exec(term);
+    if (dotted && dotted[0] === term) return true;
+    TOKEN.lastIndex = 0;
+    const token = TOKEN.exec(term);
+    return !!token && token[0] === term && !shouty(context);
   }
 
-  // The hit with the model's answer first. A known meaning it names moves to
-  // the front ('context'). A new meaning goes first only if its words spell
-  // the acronym, which keeps out most made-up answers ('guess'). Otherwise
-  // the hit is unchanged, or null when there was nothing to show.
-  function inContext(hit, answer) {
-    const a = String(answer || '').replace(/\s*\([^)]*\)\s*$/, '').trim();
-    const norm = (s) => s.toLowerCase().replace(/[^a-z0-9]/g, '');
-    const meanings = hit.meanings || [];
-    const i = a ? meanings.findIndex((m) => norm(m) === norm(a)) : -1;
-    if (i >= 0) return { ...hit, meanings: [meanings[i], ...meanings.filter((_, j) => j !== i)], source: 'context' };
-    if (a && spells(split(a), letters(hit.term))) return { ...hit, meanings: [a, ...meanings], source: 'guess' };
-    return meanings.length ? hit : null;
+  // A model's answer is kept only if what it says the letters stand for
+  // spells them: "Too Long; Didn't Read" for TL;DR, "In My Opinion" for imo.
+  // It must be two words or more, and not the term again. This drops most
+  // made-up answers and every ordinary word.
+  function believable(term, standsFor) {
+    const said = String(standsFor || '').replace(/\s*\([^)]*\)\s*$/, '');
+    const words = split(said);
+    if (words.length < 2 || said.toLowerCase() === term.toLowerCase()) return false;
+    const want = letters(term);
+    return spells(words, want, true) || (/s$/.test(want) && spells(words, want.slice(0, -1), true));
+  }
+
+  const plain = (term) => term.replace(/[:]+$/, '');
+
+  // What a term stands for: { term, meanings, gloss, source } or null. The
+  // page's own definition wins over the model's, and a plural falls back to
+  // its singular. `found` holds the model's answers for this page.
+  function resolve(term, page = {}, found = {}) {
+    const t0 = plain(term);
+    const tries = t0.endsWith('s') && t0.length > 2 ? [t0, t0.slice(0, -1)] : [t0];
+    for (const t of tries) if (page[t]) return { term: t, meanings: [page[t]], gloss: '', source: 'page' };
+    for (const t of tries) {
+      const f = found[t];
+      if (f) return { term: t, meanings: [f.standsFor], gloss: f.gloss || '', source: 'context' };
+    }
+    return null;
+  }
+
+  // A pattern that finds every known term in text, longest first, with an
+  // optional plural s. Null when there is nothing to find.
+  function termPattern(terms) {
+    const list = [...new Set(terms)].filter(Boolean).sort((a, b) => b.length - a.length);
+    if (!list.length) return null;
+    const esc = list.map((t) => t.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'));
+    return new RegExp(`(?<![A-Za-z0-9&])(?:${esc.join('|')})s?(?![A-Za-z0-9&])`, 'g');
   }
 
   function searchUrl(hit) {
@@ -144,5 +164,5 @@
     return `https://www.google.com/search?q=${encodeURIComponent(q)}`;
   }
 
-  Object.assign(AB, { TOKEN, definitions, tokenAt, resolve, askable, inContext, searchUrl, shouty });
+  Object.assign(AB, { TOKEN, DOTTED, definitions, tokenAt, askable, believable, resolve, termPattern, searchUrl, shouty, letters });
 })((self.AB = self.AB || {}));

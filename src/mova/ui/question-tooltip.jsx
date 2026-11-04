@@ -15,17 +15,21 @@
 // - No arrow. On frosted glass it doubles the blur where it overlaps the
 //   card, and Unit Bubble's card has none.
 // - Where the meaning came from is a small blue pill.
-// - Its text can change while it is open, when the model's answer replaces
-//   the dictionary's, so it measures itself again then.
+// - While the agent reads, the meaning line is Mova's AppleRadialSpinner
+//   (ui/apple-spinner.jsx) and a note; its text changes when the answer
+//   comes, so it measures itself again then.
+// - A second, softer line carries a gloss when the words alone do not
+//   explain the term (e.g. is exempli gratia, "for example").
 // Its spring and its placement over the word are Mova's.
 
 import { useLayoutEffect, useRef, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { ArrowUpRight } from 'lucide-react';
+import { AppleSpinner } from './apple-spinner.jsx';
 
 const GUTTER = 8;
 const LIFT = 6; // Mova's y travel as the card springs in
-const SOURCE = { page: 'on this page', context: 'in context', guess: 'best guess' };
+const SOURCE = { page: 'on this page', context: 'in context' };
 const GAP = 8; // Unit Bubble's gap between the word and the card
 
 export function QuestionTooltip({ hit, theme = 'light', onEnter, onLeave, onMore }) {
@@ -47,11 +51,11 @@ function Bubble({ hit, theme, onEnter, onLeave, onMore }) {
     const below = rect.top - height - GAP < GUTTER;
     const left = Math.max(GUTTER, Math.min(center - width / 2, innerWidth - width - GUTTER));
     setPlace({ below, left, top: below ? rect.bottom + GAP - LIFT : rect.top - height - GAP + LIFT, origin: center - left });
-  }, [rect.top, rect.bottom, center, hit.meanings.join('|')]);
+  }, [rect.top, rect.bottom, center, hit.source, hit.meanings.join('|')]);
 
   const dir = place && place.below ? -1 : 1;
   const skin = theme === 'dark' ? 'ab-tip-dark' : 'ab-tip-light';
-  const alts = hit.meanings.slice(1);
+  const loading = hit.source === 'loading';
 
   return (
     <motion.div
@@ -90,8 +94,17 @@ function Bubble({ hit, theme, onEnter, onLeave, onMore }) {
           <ArrowUpRight className="w-3 h-3" strokeWidth={2} />
         </a>
       </div>
-      <div className="mt-1 text-[15px] font-medium leading-snug tracking-[-0.01em]">{hit.meanings[0]}</div>
-      {alts.length > 0 && <div className="mt-0.5 leading-snug ab-soft">Also {alts.join(' · ')}</div>}
+      {loading ? (
+        <div className="mt-1 flex items-center gap-2 leading-snug ab-soft">
+          <AppleSpinner size={14} label={`Reading what ${hit.term} stands for`} />
+          <span>Reading the page…</span>
+        </div>
+      ) : (
+        <>
+          <div className="mt-1 text-[15px] font-medium leading-snug tracking-[-0.01em]">{hit.meanings[0]}</div>
+          {hit.gloss && <div className="mt-0.5 leading-snug ab-soft">{hit.gloss}</div>}
+        </>
+      )}
     </motion.div>
   );
 }

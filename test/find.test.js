@@ -1,7 +1,8 @@
 // Detection rules, without a browser: node test/find.test.js
 globalThis.self = globalThis;
-require('../src/dict.js');
 require('../src/lib/find.js');
+const fs = require('fs');
+const path = require('path');
 const { AB } = globalThis;
 
 let failures = 0;
@@ -14,28 +15,60 @@ function eq(label, got, want) {
 }
 
 const tokens = (text) => text.match(AB.TOKEN) || [];
+const dotted = (text) => text.match(AB.DOTTED) || [];
 
-// ── Tokens ──
+// ── Shapes ──
 eq('plain capitals', tokens('Call the API over HTTP.'), ['API', 'HTTP']);
 eq('mixed case', tokens('SaaS and gRPC and OAuth'), ['SaaS', 'gRPC', 'OAuth']);
 eq('ampersand', tokens('AT&T runs R&D'), ['AT&T', 'R&D']);
 eq('digits', tokens('IPv6 on EC2'), ['IPv6', 'EC2']);
 eq('one capital is not a token', tokens('Hello World a'), []);
-eq('camelCase is one token', tokens('fooAPIbar'), ['fooAPIbar']);
+eq('dots and semicolons', dotted('TL;DR: e.g. this, a.k.a. that, a Ph.D. in the U.S.'), ['TL;DR', 'e.g.', 'a.k.a.', 'Ph.D.', 'U.S.']);
+eq('file names are not dotted forms', dotted('Open index.js and README.md, then stop.'), []);
+eq('sentence ends are not dotted forms', dotted('It works. So do we.'), []);
 
 // ── tokenAt ──
 eq('token at an offset', AB.tokenAt('use the REST API now', 14), { term: 'API', start: 13, end: 16 });
+eq('dotted token at an offset', AB.tokenAt('TL;DR: it works', 3), { term: 'TL;DR', start: 0, end: 5 });
 eq('no token on a space', AB.tokenAt('the API', 3), null);
 eq('no token on a plain word', AB.tokenAt('the word', 5), null);
 
+// ── askable ──
+eq('capitals are askable', AB.askable('CDP'), true);
+eq('dotted forms are askable', AB.askable('e.g.'), true);
+eq('a lowercase word is not askable', AB.askable('imo'), false);
+eq('shouting is not askable', AB.askable('THE', 'THE QUICK BROWN FOX JUMPS'), false);
+
+// ── believable: the check on every model answer ──
+eq('capitals spell', AB.believable('API', 'Application Programming Interface'), true);
+eq('stop words are skipped', AB.believable('SaaS', 'Software as a Service'), true);
+eq('semicolon form spells', AB.believable('TL;DR', "Too Long; Didn't Read"), true);
+eq('Latin form spells', AB.believable('e.g.', 'exempli gratia'), true);
+eq('lowercase form spells', AB.believable('imo', 'In My Opinion'), true);
+eq('mixed case takes letters from inside words', AB.believable('IdP', 'Identity Provider'), true);
+eq('a word can give its first letters', AB.believable('REST', 'Representational State Transfer'), true);
+eq('a compound word can give two letters', AB.believable('HTTPS', 'Hypertext Transfer Protocol Secure'), true);
+eq('one word is not enough', AB.believable('KB', 'Kilobyte'), false);
+eq('a plural spells its singular', AB.believable('APIs', 'Application Programming Interface'), true);
+eq('a trailing (API) is ignored', AB.believable('API', 'Application Programming Interface (API)'), true);
+eq('a wrong answer does not spell', AB.believable('WSS', 'Webhook Secret Store Value'), false);
+eq('an ordinary word does not spell', AB.believable('the', 'The'), false);
+eq('an empty answer does not spell', AB.believable('API', ''), false);
+
 // ── resolve ──
-eq('dictionary', AB.resolve('API', {}).meanings[0], 'Application Programming Interface');
-eq('plural falls back', AB.resolve('APIs', {}).term, 'API');
-eq('page wins', AB.resolve('API', { API: 'Acme Payments Index' }), { term: 'API', meanings: ['Acme Payments Index'], source: 'page' });
-eq('unknown', AB.resolve('ZZQX', {}), null);
-eq('word-like in a sentence', AB.resolve('IT', {}, 'Ask the IT team for access.') !== null, true);
-eq('word-like in shouting', AB.resolve('IT', {}, 'IT IS VERY IMPORTANT THAT YOU READ THIS'), null);
-eq('acronym in shouting', AB.resolve('API', {}, 'API REFERENCE AND GUIDES') !== null, true);
+const found = { API: { standsFor: 'Application Programming Interface', gloss: '' }, 'e.g.': { standsFor: 'exempli gratia', gloss: 'for example' } };
+eq('from the agent', AB.resolve('API', {}, found), { term: 'API', meanings: ['Application Programming Interface'], gloss: '', source: 'context' });
+eq('with a gloss', AB.resolve('e.g.', {}, found).gloss, 'for example');
+eq('plural falls back', AB.resolve('APIs', {}, found).term, 'API');
+eq('a trailing colon is ignored', AB.resolve('API:', {}, found).term, 'API');
+eq('the page wins', AB.resolve('API', { API: 'Acme Payments Index' }, found).source, 'page');
+eq('unknown', AB.resolve('ZZQX', {}, found), null);
+
+// ── termPattern ──
+const p = AB.termPattern(['TL;DR', 'e.g.', 'imo', 'API']);
+eq('finds every known term, plurals too', 'TL;DR: imo the APIs, e.g. this'.match(p), ['TL;DR', 'imo', 'APIs', 'e.g.']);
+eq('not inside other words', 'apimo timothy'.match(p), null);
+eq('nothing known, no pattern', AB.termPattern([]), null);
 
 // ── Page definitions ──
 const defs = (t) => AB.definitions(t);
@@ -45,36 +78,20 @@ eq('stop words', defs('Sold as Software as a Service (SaaS).'), { SaaS: 'Softwar
 eq('capitals inside a word', defs('Data is JavaScript Object Notation (JSON).'), { JSON: 'JavaScript Object Notation' });
 eq('lowercase words', defs('a customer data platform (CDP) holds it'), { CDP: 'customer data platform' });
 eq('plural in parens', defs('Service Level Objectives (SLOs) are set'), { SLO: 'Service Level Objectives' });
-eq('shortest run that spells it', defs('We built the Payment Gateway (PG).'), { PG: 'Payment Gateway' });
 eq('words that do not spell it', defs('See the docs (API) and more.'), {});
 eq('a note in parens is not a definition', defs('Use the API (see below).'), {});
-
-// ── Meaning in context ──
-const CI = AB.resolve('CI', {});
-eq('the model picks a known meaning', AB.inContext(CI, 'Confidence Interval').meanings, ['Confidence Interval', 'Continuous Integration']);
-eq('a pick is marked in context', AB.inContext(CI, 'Confidence Interval').source, 'context');
-eq('a pick ignores case and a trailing (CI)', AB.inContext(CI, 'confidence interval (CI)').meanings[0], 'Confidence Interval');
-eq('a new meaning that spells it goes first', AB.inContext(CI, 'Configuration Item').meanings, ['Configuration Item', 'Continuous Integration', 'Confidence Interval']);
-eq('a new meaning is a guess', AB.inContext(CI, 'Configuration Item').source, 'guess');
-eq('an answer that does not spell it is dropped', AB.inContext(CI, 'Build Server'), CI);
-eq('no answer keeps the dictionary', AB.inContext(CI, ''), CI);
-const unknown = { term: 'CDP', meanings: [], source: 'unknown' };
-eq('an unknown acronym gets the model meaning', AB.inContext(unknown, 'Customer Data Platform').meanings, ['Customer Data Platform']);
-eq('an unknown acronym with no answer shows nothing', AB.inContext(unknown, ''), null);
-eq('all caps is askable', AB.askable('CDP'), true);
-eq('a plural is askable', AB.askable('CDPs'), true);
-eq('a name is not askable', AB.askable('GitHub'), false);
-eq('an RFC keyword is not askable', AB.askable('MUST'), false);
-eq('an HTTP method is not askable', AB.askable('GET'), false);
-eq('shouting is not askable', AB.askable('THE', 'THE QUICK BROWN FOX JUMPS'), false);
 
 // ── Search ──
 eq('search url', AB.searchUrl({ term: 'API', meanings: ['Application Programming Interface'] }), 'https://www.google.com/search?q=API%20Application%20Programming%20Interface');
 
-// ── Dictionary shape ──
-const keys = Object.keys(AB.DICT);
-eq('every key is a token', keys.filter((k) => tokens(k)[0] !== k), []);
-eq('every word-like key is in the dictionary', [...AB.WORDLIKE].filter((k) => !AB.DICT[k]), []);
+// ── No word lists ──
+// Meanings come from the page and the model only. A list of abbreviations,
+// or of words that are not ones, does not belong in the extension.
+const src = path.join(__dirname, '..', 'src');
+const files = fs.readdirSync(src, { recursive: true }).filter((f) => /\.(js|jsx)$/.test(f));
+eq('no dictionary file', fs.existsSync(path.join(src, 'dict.js')), false);
+const listy = files.filter((f) => /\bDICT\b|WORDLIKE|PLAIN_CAPS/.test(fs.readFileSync(path.join(src, f), 'utf8')));
+eq('no word-list names in the source', listy, []);
 
-console.log(`${checks - failures}/${checks} passed, ${keys.length} acronyms`);
+console.log(`${checks - failures}/${checks} passed`);
 process.exit(failures ? 1 : 0);
