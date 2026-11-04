@@ -12,7 +12,9 @@ async function get(url, { timeout = 15000 } = {}) {
     const res = await fetch(url, {
       signal: controller.signal,
       redirect: 'follow',
-      headers: { 'User-Agent': UA, Accept: 'text/html,application/xhtml+xml,application/xml,text/plain,text/markdown,*/*;q=0.5' },
+      // Chrome's own Accept header. Asking for text/markdown gets some sites
+      // (Cloudflare's, AWS docs) to send Markdown a browser never sees.
+      headers: { 'User-Agent': UA, Accept: 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8' },
     });
     const type = (res.headers.get('content-type') || '').split(';')[0].trim().toLowerCase();
     // A PDF's text needs a PDF reader; the scan only notes that it is one.
